@@ -22,9 +22,9 @@
 //! field-tag    = unsigned16
 //! field-length = unsigned32
 //! field-value  = octet-array
-//! unsigned16   = %x0000-xFFFF
-//! unsigned32   = %x00000000-xFFFFFFFF
-//! octet-array  = *%x00-xFF
+//! unsigned16   = 0x0000-0xFFFF
+//! unsigned32   = 0x00000000-0xFFFFFFFF
+//! octet-array  = *0x00-0xFF
 //! ```
 //! Where:
 //!
@@ -34,6 +34,14 @@
 //!
 //! The root frame can either be encoded as a `frame` or as a `packet-frame`.  Encoding
 //! as a `packet-frame` is useful when sending `frame`s across a stream.
+//!
+//! Although applications can store arbitrary data in `field-value` the follow
+//! conventions should normally be observed:
+//!
+//! * numbers use big-endian encoding
+//! * boolean values are encoded using a single byte (`0x00`=`false`, `0xFF`=`true`)
+//! * text is encoded as UTF-8
+//!
 
 const SIZE_BYTES: usize = 4;
 
@@ -83,6 +91,29 @@ pub trait FrameBuilderLike {
     /// ], &data[..]);
     /// ```
     fn add_child(&mut self, tag: u16) -> PacketFrameBuilder;
+
+    /// Add a bool flied to the frame.
+    /// ```
+    /// use yatlv::{FrameBuilder, FrameBuilderLike};
+    /// let mut data = Vec::with_capacity(100);
+    /// {
+    ///     let mut bld = FrameBuilder::new(&mut data);
+    ///     bld.add_bool(1022, true);
+    ///     bld.add_bool(1021, false);
+    /// }
+    /// assert_eq!(&[
+    ///     0, 0, 0, 2, // field count = 1
+    ///     3, 254, // tag = 1022
+    ///     0, 0, 0, 1,  // field length = 2
+    ///     255,  // field value
+    ///     3, 253, // tag = 1021
+    ///     0, 0, 0, 1,  // field length = 2
+    ///     0  // field value
+    /// ], &data[..]);
+    /// ```
+    fn add_bool(&mut self, tag: u16, value: bool) {
+        self.add_u8(tag, if value { 0xFF } else { 0x00 })
+    }
 
     /// Add a u8 field to the frame.
     ///
@@ -414,6 +445,28 @@ mod tests {
                 0, 60, // field-tag in child frame
                 0, 0, 0, 2, // field-length in child frame
                 9, 255 // field-value in child frame
+            ],
+            &data[..]
+        );
+    }
+
+    #[test]
+    fn can_add_bool_to_frame() {
+        let mut data = Vec::with_capacity(100);
+        {
+            let mut bld = FrameBuilder::new(&mut data);
+            bld.add_bool(1022, true);
+            bld.add_bool(1021, false);
+        }
+        assert_eq!(
+            &[
+                0, 0, 0, 2, // field count = 1
+                3, 254, // tag = 1022
+                0, 0, 0, 1,   // field length = 2
+                255, // field value
+                3, 253, // tag = 1021
+                0, 0, 0, 1, // field length = 2
+                0  // field value
             ],
             &data[..]
         );
