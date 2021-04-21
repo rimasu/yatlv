@@ -128,9 +128,35 @@ pub trait FrameBuilderLike {
     fn add_u64(&mut self, tag: u16, value: u64) {
         self.add_data(tag, &value.to_be_bytes())
     }
+
+
+    /// Add a UTF-8 field to the frame.
+    ///
+    /// ```
+    /// use yatlv::{FrameBuilder, FrameBuilderLike};
+    /// let mut data = Vec::with_capacity(100);
+    /// {
+    ///     let mut bld = FrameBuilder::new(&mut data);
+    ///     let tag = 45;
+    ///     let data = "hello";
+    ///     bld.add_utf8(tag, data);
+    /// }
+    /// assert_eq!(&[
+    ///     0, 0, 0, 1, // field count
+    ///     0, 45,// field-tag
+    ///     0, 0, 0, 5, // field-length
+    ///     104, 101, 108, 108, 111 // field-value
+    /// ], &data[..]);
+    /// ```
+    fn add_utf8<S>(&mut self, tag: u16, value: S) where S: AsRef<str> {
+        self.add_data(tag, &value.as_ref().as_bytes())
+    }
 }
 
 /// FrameBuilder can be used to push a frame into a mutable Vec<u8>
+///
+/// For usage details see [FrameBuilderLike].
+///
 /// ```
 /// use yatlv::FrameBuilder;
 /// let mut data = Vec::with_capacity(100);
@@ -186,6 +212,7 @@ impl<'a> FrameBuilderLike for FrameBuilder<'a> {
 
 /// PacketBuilder can be used to push a packet into a mutable Vec<u8>
 ///
+/// For usage details see [FrameBuilderLike].
 /// ```
 /// use yatlv::PacketFrameBuilder;
 /// let mut data = Vec::with_capacity(100);
@@ -379,6 +406,24 @@ mod tests {
                 3, 254, // tag = 1022
                 0, 0, 0, 8, // field length = 2
                 0, 0, 0, 36, 96, 73, 56, 234  // field value (156234234090)
+            ],
+            &data[..]
+        );
+    }
+
+    #[test]
+    fn can_add_utf8_to_frame() {
+        let mut data = Vec::with_capacity(100);
+        {
+            let mut bld = FrameBuilder::new(&mut data);
+            bld.add_utf8(1022, "hello");
+        }
+        assert_eq!(
+            &[
+                0, 0, 0, 1, // field count = 1
+                3, 254, // tag = 1022
+                0, 0, 0, 5, // field length = 2
+                104, 101, 108, 108, 111  // field value (156234234090)
             ],
             &data[..]
         );
