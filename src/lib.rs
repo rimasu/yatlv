@@ -58,6 +58,31 @@ pub trait FrameBuilderLike {
     /// ], &data[..]);
     /// ```
     fn add_data(&mut self, tag: u16, value: &[u8]);
+
+    /// Create a new child frame builder.
+    ///
+    /// ```
+    /// use yatlv::{FrameBuilder, FrameBuilderLike};
+    /// let mut data = Vec::with_capacity(100);
+    /// {
+    ///     let mut bld = FrameBuilder::new(&mut data);
+    ///     let tag = 45;
+    ///     let mut child_bld = bld.add_child(45);
+    ///     let tag2 = 60;
+    ///     let data = &[90, 9];
+    ///     child_bld.add_data(60, data);
+    /// }
+    /// assert_eq!(&[
+    ///     0, 0, 0, 1, // field count
+    ///     0, 45,// field-tag
+    ///     0, 0, 0, 12, // field-length
+    ///     0, 0, 0, 1, // child field count
+    ///     0, 60, // child field-tag2
+    ///     0, 0, 0, 2, // child field-length
+    ///     90, 9 // child field-value
+    /// ], &data[..]);
+    /// ```
+    fn add_child(&mut self, tag: u16) -> PacketFrameBuilder;
 }
 
 /// FrameBuilder can be used to push a frame into a mutable Vec<u8>
@@ -97,7 +122,6 @@ impl<'a> FrameBuilder<'a> {
 }
 
 impl<'a> FrameBuilderLike for FrameBuilder<'a> {
-
     fn add_data(&mut self, tag: u16, value: &[u8]) {
         self.field_count += 1;
         self.data.reserve(6 + value.len());
@@ -105,6 +129,13 @@ impl<'a> FrameBuilderLike for FrameBuilder<'a> {
         self.data
             .extend_from_slice(&(value.len() as u32).to_be_bytes());
         self.data.extend_from_slice(value);
+    }
+
+    fn add_child(&mut self, tag: u16) -> PacketFrameBuilder {
+        self.field_count += 1;
+        self.data.reserve(6);
+        self.data.extend_from_slice(&tag.to_be_bytes());
+        PacketFrameBuilder::new(self.data)
     }
 }
 
@@ -154,9 +185,15 @@ impl<'a> FrameBuilderLike for PacketFrameBuilder<'a> {
         self.field_count += 1;
         self.data.reserve(6 + value.len());
         self.data.extend_from_slice(&tag.to_be_bytes());
-        self.data
-            .extend_from_slice(&(value.len() as u32).to_be_bytes());
+        self.data.extend_from_slice(&(value.len() as u32).to_be_bytes());
         self.data.extend_from_slice(value);
+    }
+
+    fn add_child(&mut self, tag: u16) -> PacketFrameBuilder {
+        self.field_count += 1;
+        self.data.reserve(6);
+        self.data.extend_from_slice(&tag.to_be_bytes());
+        PacketFrameBuilder::new(self.data)
     }
 }
 
@@ -214,6 +251,52 @@ mod tests {
                 3, 254, // tag = 1022
                 0, 0, 0, 2, // field length = 2
                 9, 255, // field value
+            ],
+            &data[..]
+        );
+    }
+
+
+    #[test]
+    fn can_add_child_to_frame() {
+        let mut data = Vec::with_capacity(100);
+        {
+            let mut bld = FrameBuilder::new(&mut data);
+            let mut child_bld = bld.add_child(1022);
+            child_bld.add_data(60, &[9, 255])
+        }
+        assert_eq!(
+            &[
+                0, 0, 0, 1, // field count = 1
+                3, 254, // tag = 1022
+                0, 0, 0, 12, // child frame size
+                0, 0, 0, 1, // child frame field count
+                0, 60,  // field-tag in child frame
+                0, 0, 0, 2, // field-length in child frame
+                9, 255 // field-value in child frame
+            ],
+            &data[..]
+        );
+    }
+
+    #[test]
+    fn can_add_child_to_packet_frame() {
+        let mut data = Vec::with_capacity(100);
+        {
+            let mut bld = PacketFrameBuilder::new(&mut data);
+            let mut child_bld = bld.add_child(1022);
+            child_bld.add_data(60, &[9, 255])
+        }
+        assert_eq!(
+            &[
+                0, 0, 0, 22, // packet size
+                0, 0, 0, 1, // field count = 1
+                3, 254, // tag = 1022
+                0, 0, 0, 12, // child frame size
+                0, 0, 0, 1, // child frame field count
+                0, 60,  // field-tag in child frame
+                0, 0, 0, 2, // field-length in child frame
+                9, 255 // field-value in child frame
             ],
             &data[..]
         );
