@@ -43,6 +43,8 @@
 //! * text is encoded as UTF-8
 //!
 
+use std::convert::TryInto;
+
 const SIZE_BYTES: usize = 4;
 
 /// FrameBuilderLike defines the methods common to [FrameBuilder] and [PacketFrameBuilder].
@@ -330,8 +332,8 @@ pub trait FrameBuilderLike {
     /// ], &data[..]);
     /// ```
     fn add_utf8<S>(&mut self, tag: u16, value: S)
-    where
-        S: AsRef<str>,
+        where
+            S: AsRef<str>,
     {
         self.add_data(tag, &value.as_ref().as_bytes())
     }
@@ -453,6 +455,120 @@ impl<'a> FrameBuilderLike for PacketFrameBuilder<'a> {
         PacketFrameBuilder::new(self.data)
     }
 }
+
+/// Library Error Type
+#[derive(Debug, Eq, PartialEq)]
+pub enum Error {
+    /// The frame must start with four bytes that indicate the number fields
+    /// in the frame (encoded as big-endian u32)
+    IncompleteFrameFieldCount,
+
+    /// Each field must start with a two byte tag (big-endian u16) and a
+    /// four byte length (big-endian u32).
+    IncompleteFieldTagOrLength,
+
+    /// Each field must have a value that is field-length long
+    /// This error as expected and actual lengths.
+    IncompleteFieldValue(usize, usize),
+}
+
+/// Library Result Type
+pub type Result<T> = std::result::Result<T, Error>;
+
+struct FrameParserField<'a> {
+    tag: u16,
+    value: &'a [u8],
+}
+
+/// FrameParser can be used to access field encoded as a frame.
+pub struct FrameParser<'a> {
+    fields: Vec<FrameParserField<'a>>
+}
+
+fn read_frame_field_count(data: &[u8]) -> Result<(u32, &[u8])> {
+    if data.len() >= 4 {
+        let (field_count_bytes, tail) = data.split_at(4);
+        let field_count = u32::from_be_bytes(field_count_bytes.try_into().unwrap());
+        Ok((field_count, tail))
+    } else {
+        Err(Error::IncompleteFrameFieldCount)
+    }
+}
+
+fn read_field_tag_and_length(data: &[u8]) -> Result<(u16, usize, &[u8])> {
+    if data.len() >= 6 {
+        let (tag_bytes, tail) = data.split_at(2);
+        let tag = u16::from_be_bytes(tag_bytes.try_into().unwrap());
+        let (length_bytes, tail) = tail.split_at(4);
+        let length = u32::from_be_bytes(length_bytes.try_into().unwrap()) as usize;
+        Ok((tag, length, tail))
+    } else {
+        Err(Error::IncompleteFieldTagOrLength)
+    }
+}
+
+fn read_field_value(data: &[u8], field_length: usize) -> Result<(&[u8], &[u8])> {
+    if data.len() >= field_length {
+        Ok(data.split_at(field_length))
+    } else {
+        Err(Error::IncompleteFieldValue(field_length, data.len()))
+    }
+}
+
+impl<'a> FrameParser<'a> {
+    /// ```
+    /// # use yatlv::{FrameParser, FrameBuilder, FrameBuilderLike, Result};
+    /// # fn main() -> Result<()> {
+    /// # let mut frame_data = Vec::new();
+    /// # {
+    /// #     let mut bld = FrameBuilder::new(&mut frame_data);
+    /// #     bld.add_data(12, &[4, 5]);
+    /// # }
+    /// #
+    /// // Assuming frame_data contains a value frame with a single data field (tag=12, value=[4, 5])
+    /// let parser = FrameParser::new(&frame_data)?;
+    /// let expected: &[u8] = &[4, 5];
+    /// assert_eq!(Some(expected), parser.get_data(12));
+    /// # Ok(()) }
+    ///  ```
+    pub fn new(frame_data: &[u8]) -> Result<FrameParser> {
+        let (field_count, mut body) = read_frame_field_count(frame_data)?;
+        let mut fields = Vec::with_capacity(field_count as usize);
+        for _ in 0..field_count {
+            let (tag, length, tail) = read_field_tag_and_length(body)?;
+            let (value, tail) = read_field_value(tail, length)?;
+            fields.push(FrameParserField { tag, value });
+            body = tail
+        }
+        Ok(FrameParser { fields })
+    }
+
+    /// Read field from frame.
+    /// ```
+    /// # use yatlv::{FrameParser, FrameBuilder, FrameBuilderLike, Result};
+    /// # fn main() -> Result<()> {
+    /// # let mut frame_data = Vec::new();
+    /// # {
+    /// #     let mut bld = FrameBuilder::new(&mut frame_data);
+    /// #     bld.add_data(12, &[4, 5]);
+    /// # }
+    /// #
+    /// // Assuming frame_data contains a value frame with a single data field (tag=12, value=[4, 5])
+    /// let parser = FrameParser::new(&frame_data)?;
+    /// let expected: &[u8] = &[4, 5];
+    /// assert_eq!(Some(expected), parser.get_data(12));
+    /// # Ok(()) }
+    ///  ```
+    pub fn get_data(&self, search_tag: u16) -> Option<&[u8]> {
+        for field in &self.fields {
+            if field.tag == search_tag {
+                return Some(field.value);
+            }
+        }
+        None
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -746,5 +862,44 @@ mod tests {
             ],
             &data[..]
         );
+    }
+
+    #[test]
+    fn can_not_parse_a_frame_if_there_is_not_enough_data_for_field_count() {
+        let data = &[0, 0, 0]; // need four bytes for a field count.
+        assert_eq!(Some(Error::IncompleteFrameFieldCount), FrameParser::new(data).err());
+    }
+
+    #[test]
+    fn can_not_parse_a_frame_if_there_is_not_enough_data_for_field_tag_and_length() {
+        let data = &[
+            0, 0, 0, 1, // field count = 1
+            0, 1, // tag = 1
+            0, 0, 0 // incomplete field length
+        ];
+        assert_eq!(Some(Error::IncompleteFieldTagOrLength), FrameParser::new(data).err());
+    }
+
+    #[test]
+    fn can_not_parse_a_frame_if_there_is_not_enough_data_for_a_field_value() {
+        let data = &[
+            0, 0, 0, 1, // field count = 1
+            0, 1, // tag = 1
+            0, 0, 0, 4, // field length = 4
+            1, 2, 3 // incomplete value
+        ];
+        assert_eq!(Some(Error::IncompleteFieldValue(4, 3)), FrameParser::new(data).err());
+    }
+
+    #[test]
+    fn can_read_data_from_frame() {
+        let data = &[
+            0, 0, 0, 1, // field count = 1
+            0, 1, // tag = 1
+            0, 0, 0, 4, // field length = 4
+            1, 2, 3, 4 //
+        ];
+        let frame = FrameParser::new(data).unwrap();
+        assert_eq!(&[1, 2, 3, 4], frame.get_data(1).unwrap());
     }
 }
