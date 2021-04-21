@@ -139,6 +139,9 @@ pub trait FrameBuilderLike {
 
     /// Add a u16 field to the frame.
     ///
+    /// This method will always use a two byte encoding
+    /// for the value.
+    ///
     /// ```
     /// use yatlv::{FrameBuilder, FrameBuilderLike};
     /// let mut data = Vec::with_capacity(100);
@@ -157,6 +160,37 @@ pub trait FrameBuilderLike {
     /// ```
     fn add_u16(&mut self, tag: u16, value: u16) {
         self.add_data(tag, &value.to_be_bytes())
+    }
+
+    /// Add a compact u16 field to the frame.
+    ///
+    /// If the value can fit into a `u8` then value
+    /// is encoded as if `add_u8` was called.
+    ///
+    /// ```
+    /// use yatlv::{FrameBuilder, FrameBuilderLike};
+    /// let mut data = Vec::with_capacity(100);
+    /// {
+    ///     let mut bld = FrameBuilder::new(&mut data);
+    ///     bld.add_compact_u16(1, 0x100);
+    ///     bld.add_compact_u16(2, 0xFF);
+    /// }
+    /// assert_eq!(&[
+    ///     0, 0, 0, 2, // field count
+    ///     0, 1, // field-tag
+    ///     0, 0, 0, 2, // field-length
+    ///     1, 0, // field-value,
+    ///     0, 2, // field-tag
+    ///     0, 0, 0, 1, // field-length
+    ///     255 // field-value
+    /// ], &data[..]);
+    /// ```
+    fn add_compact_u16(&mut self, tag: u16, value: u16) {
+        if value <= 0xFF {
+            self.add_u8(tag, value as u8)
+        } else {
+            self.add_u16(tag, value)
+        }
     }
 
     /// Add a u32 field to the frame.
@@ -181,6 +215,41 @@ pub trait FrameBuilderLike {
         self.add_data(tag, &value.to_be_bytes())
     }
 
+    /// Add a u32 field to the frame.
+    ///
+    /// If the value can fit into a `u16` then value
+    /// is encoded as if `add_compact_u16` was called.
+    ///
+    /// ```
+    /// use yatlv::{FrameBuilder, FrameBuilderLike};
+    /// let mut data = Vec::with_capacity(100);
+    /// {
+    ///     let mut bld = FrameBuilder::new(&mut data);
+    ///     bld.add_compact_u32(1, 0x10000);
+    ///     bld.add_compact_u32(2, 0xFFFF);
+    ///     bld.add_compact_u32(3, 0xFF);
+    /// }
+    /// assert_eq!(&[
+    ///     0, 0, 0, 3, // field count
+    ///     0, 1,       // field-tag 1
+    ///     0, 0, 0, 4, // field-length
+    ///     0, 1, 0, 0, // field-value,
+    ///     0, 2,       // field-tag 2
+    ///     0, 0, 0, 2, // field-length
+    ///     255, 255,   // field-value
+    ///     0, 3,       // field-tag 3
+    ///     0, 0, 0, 1, // field-length
+    ///     255         // field-value
+    /// ], &data[..]);
+    /// ```
+    fn add_compact_u32(&mut self, tag: u16, value: u32) {
+        if value <= 0xFFFF {
+            self.add_compact_u16(tag, value as u16)
+        } else {
+            self.add_u32(tag, value)
+        }
+    }
+
     /// Add a u64 field to the frame.
     ///
     /// ```
@@ -201,6 +270,45 @@ pub trait FrameBuilderLike {
     /// ```
     fn add_u64(&mut self, tag: u16, value: u64) {
         self.add_data(tag, &value.to_be_bytes())
+    }
+
+    /// Add a u64 field to the frame.
+    ///
+    /// If the value can fit into a `u32` then value
+    /// is encoded as if `add_compact_u32` was called.
+    ///
+    /// ```
+    /// use yatlv::{FrameBuilder, FrameBuilderLike};
+    /// let mut data = Vec::with_capacity(100);
+    /// {
+    ///     let mut bld = FrameBuilder::new(&mut data);
+    ///     bld.add_compact_u64(1, 0x100000000);
+    ///     bld.add_compact_u64(2, 0xFFFFFFFF);
+    ///     bld.add_compact_u64(3, 0xFFFF);
+    ///     bld.add_compact_u64(4, 0xFF);
+    /// }
+    /// assert_eq!(&[
+    ///     0, 0, 0, 4,             // field count
+    ///     0, 1,                   // field-tag 1
+    ///     0, 0, 0, 8,             // field-length
+    ///     0, 0, 0, 1, 0, 0, 0, 0, // field-value,
+    ///     0, 2,                   // field-tag 2
+    ///     0, 0, 0, 4,             // field-length
+    ///     255, 255, 255, 255,     // field-value
+    ///     0, 3,                   // field-tag 3
+    ///     0, 0, 0, 2,             // field-length
+    ///     255, 255,               // field-value
+    ///     0, 4,                   // field-tag 4
+    ///     0, 0, 0, 1,             // field-length
+    ///     255                     // field-value
+    /// ], &data[..]);
+    /// ```
+    fn add_compact_u64(&mut self, tag: u16, value: u64) {
+        if value <= 0xFFFFFFFF {
+            self.add_compact_u32(tag, value as u32)
+        } else {
+            self.add_u64(tag, value)
+        }
     }
 
     /// Add a UTF-8 field to the frame.
@@ -229,7 +337,7 @@ pub trait FrameBuilderLike {
     }
 }
 
-/// FrameBuilder can be used to push a frame into a mutable Vec<u8>
+/// FrameBuilder can be used to push a frame into a mutable `Vec<u8>`
 ///
 /// For usage details see [FrameBuilderLike].
 ///
@@ -286,7 +394,7 @@ impl<'a> FrameBuilderLike for FrameBuilder<'a> {
     }
 }
 
-/// PacketBuilder can be used to push a packet into a mutable Vec<u8>
+/// PacketBuilder can be used to push a packet-frame into a mutable `Vec<u8>`
 ///
 /// For usage details see [FrameBuilderLike].
 /// ```
@@ -509,6 +617,28 @@ mod tests {
     }
 
     #[test]
+    fn can_add_compact_u16_to_frame() {
+        let mut data = Vec::with_capacity(100);
+        {
+            let mut bld = FrameBuilder::new(&mut data);
+            bld.add_compact_u16(1, 0x100);
+            bld.add_compact_u16(2, 0xFF);
+        }
+        assert_eq!(
+            &[
+                0, 0, 0, 2, // field count
+                0, 1, // field-tag
+                0, 0, 0, 2, // field-length
+                1, 0, // field-value,
+                0, 2, // field-tag
+                0, 0, 0, 1,   // field-length
+                255  // field-value
+            ],
+            &data[..]
+        );
+    }
+
+    #[test]
     fn can_add_u32_to_frame() {
         let mut data = Vec::with_capacity(100);
         {
@@ -527,6 +657,32 @@ mod tests {
     }
 
     #[test]
+    fn can_add_compact_u32_to_frame() {
+        let mut data = Vec::with_capacity(100);
+        {
+            let mut bld = FrameBuilder::new(&mut data);
+            bld.add_compact_u32(1, 0x10000);
+            bld.add_compact_u32(2, 0xFFFF);
+            bld.add_compact_u32(3, 0xFF);
+        }
+        assert_eq!(
+            &[
+                0, 0, 0, 3, // field count
+                0, 1, // field-tag 1
+                0, 0, 0, 4, // field-length
+                0, 1, 0, 0, // field-value,
+                0, 2, // field-tag 2
+                0, 0, 0, 2, // field-length
+                255, 255, // field-value
+                0, 3, // field-tag 3
+                0, 0, 0, 1,   // field-length
+                255  // field-value
+            ],
+            &data[..]
+        );
+    }
+
+    #[test]
     fn can_add_u64_to_frame() {
         let mut data = Vec::with_capacity(100);
         {
@@ -539,6 +695,36 @@ mod tests {
                 3, 254, // tag = 1022
                 0, 0, 0, 8, // field length = 2
                 0, 0, 0, 36, 96, 73, 56, 234 // field value (156234234090)
+            ],
+            &data[..]
+        );
+    }
+
+    #[test]
+    fn can_add_compact_u64_to_frame() {
+        let mut data = Vec::with_capacity(100);
+        {
+            let mut bld = FrameBuilder::new(&mut data);
+            bld.add_compact_u64(1, 0x100000000);
+            bld.add_compact_u64(2, 0xFFFFFFFF);
+            bld.add_compact_u64(3, 0xFFFF);
+            bld.add_compact_u64(4, 0xFF);
+        }
+        assert_eq!(
+            &[
+                0, 0, 0, 4, // field count
+                0, 1, // field-tag 1
+                0, 0, 0, 8, // field-length
+                0, 0, 0, 1, 0, 0, 0, 0, // field-value,
+                0, 2, // field-tag 2
+                0, 0, 0, 4, // field-length
+                255, 255, 255, 255, // field-value
+                0, 3, // field-tag 3
+                0, 0, 0, 2, // field-length
+                255, 255, // field-value
+                0, 4, // field-tag 4
+                0, 0, 0, 1,   // field-length
+                255  // field-value
             ],
             &data[..]
         );
