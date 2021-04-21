@@ -83,6 +83,51 @@ pub trait FrameBuilderLike {
     /// ], &data[..]);
     /// ```
     fn add_child(&mut self, tag: u16) -> PacketFrameBuilder;
+
+
+    /// Add a u32 field to the frame.
+    ///
+    /// ```
+    /// use yatlv::{FrameBuilder, FrameBuilderLike};
+    /// let mut data = Vec::with_capacity(100);
+    /// {
+    ///     let mut bld = FrameBuilder::new(&mut data);
+    ///     let tag = 45;
+    ///     let data = 7;
+    ///     bld.add_u32(tag, data);
+    /// }
+    /// assert_eq!(&[
+    ///     0, 0, 0, 1, // field count
+    ///     0, 45,// field-tag
+    ///     0, 0, 0, 4, // field-length
+    ///     0, 0, 0, 7 // field-value
+    /// ], &data[..]);
+    /// ```
+    fn add_u32(&mut self, tag: u16, value: u32) {
+        self.add_data(tag, &value.to_be_bytes())
+    }
+
+    /// Add a u64 field to the frame.
+    ///
+    /// ```
+    /// use yatlv::{FrameBuilder, FrameBuilderLike};
+    /// let mut data = Vec::with_capacity(100);
+    /// {
+    ///     let mut bld = FrameBuilder::new(&mut data);
+    ///     let tag = 45;
+    ///     let data = 7;
+    ///     bld.add_u64(tag, data);
+    /// }
+    /// assert_eq!(&[
+    ///     0, 0, 0, 1, // field count
+    ///     0, 45,// field-tag
+    ///     0, 0, 0, 8, // field-length
+    ///     0, 0, 0, 0, 0, 0, 0, 7 // field-value
+    /// ], &data[..]);
+    /// ```
+    fn add_u64(&mut self, tag: u16, value: u64) {
+        self.add_data(tag, &value.to_be_bytes())
+    }
 }
 
 /// FrameBuilder can be used to push a frame into a mutable Vec<u8>
@@ -297,6 +342,43 @@ mod tests {
                 0, 60,  // field-tag in child frame
                 0, 0, 0, 2, // field-length in child frame
                 9, 255 // field-value in child frame
+            ],
+            &data[..]
+        );
+    }
+
+
+    #[test]
+    fn can_add_u32_to_frame() {
+        let mut data = Vec::with_capacity(100);
+        {
+            let mut bld = FrameBuilder::new(&mut data);
+            bld.add_u32(1022, 156090);
+        }
+        assert_eq!(
+            &[
+                0, 0, 0, 1, // field count = 1
+                3, 254, // tag = 1022
+                0, 0, 0, 4, // field length = 2
+                0, 2, 97, 186 // field value (156090)
+            ],
+            &data[..]
+        );
+    }
+
+    #[test]
+    fn can_add_u64_to_frame() {
+        let mut data = Vec::with_capacity(100);
+        {
+            let mut bld = FrameBuilder::new(&mut data);
+            bld.add_u64(1022, 156234234090);
+        }
+        assert_eq!(
+            &[
+                0, 0, 0, 1, // field count = 1
+                3, 254, // tag = 1022
+                0, 0, 0, 8, // field length = 2
+                0, 0, 0, 36, 96, 73, 56, 234  // field value (156234234090)
             ],
             &data[..]
         );
