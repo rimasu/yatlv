@@ -84,6 +84,49 @@ pub trait FrameBuilderLike {
     /// ```
     fn add_child(&mut self, tag: u16) -> PacketFrameBuilder;
 
+    /// Add a u8 field to the frame.
+    ///
+    /// ```
+    /// use yatlv::{FrameBuilder, FrameBuilderLike};
+    /// let mut data = Vec::with_capacity(100);
+    /// {
+    ///     let mut bld = FrameBuilder::new(&mut data);
+    ///     let tag = 45;
+    ///     let data = 7;
+    ///     bld.add_u8(tag, data);
+    /// }
+    /// assert_eq!(&[
+    ///     0, 0, 0, 1, // field count
+    ///     0, 45,// field-tag
+    ///     0, 0, 0, 1, // field-length
+    ///     7 // field-value
+    /// ], &data[..]);
+    /// ```
+    fn add_u8(&mut self, tag: u16, value: u8) {
+        self.add_data(tag, &value.to_be_bytes())
+    }
+
+    /// Add a u16 field to the frame.
+    ///
+    /// ```
+    /// use yatlv::{FrameBuilder, FrameBuilderLike};
+    /// let mut data = Vec::with_capacity(100);
+    /// {
+    ///     let mut bld = FrameBuilder::new(&mut data);
+    ///     let tag = 45;
+    ///     let data = 7;
+    ///     bld.add_u16(tag, data);
+    /// }
+    /// assert_eq!(&[
+    ///     0, 0, 0, 1, // field count
+    ///     0, 45,// field-tag
+    ///     0, 0, 0, 2, // field-length
+    ///     0, 7 // field-value
+    /// ], &data[..]);
+    /// ```
+    fn add_u16(&mut self, tag: u16, value: u16) {
+        self.add_data(tag, &value.to_be_bytes())
+    }
 
     /// Add a u32 field to the frame.
     ///
@@ -129,7 +172,6 @@ pub trait FrameBuilderLike {
         self.add_data(tag, &value.to_be_bytes())
     }
 
-
     /// Add a UTF-8 field to the frame.
     ///
     /// ```
@@ -148,7 +190,10 @@ pub trait FrameBuilderLike {
     ///     104, 101, 108, 108, 111 // field-value
     /// ], &data[..]);
     /// ```
-    fn add_utf8<S>(&mut self, tag: u16, value: S) where S: AsRef<str> {
+    fn add_utf8<S>(&mut self, tag: u16, value: S)
+    where
+        S: AsRef<str>,
+    {
         self.add_data(tag, &value.as_ref().as_bytes())
     }
 }
@@ -257,7 +302,8 @@ impl<'a> FrameBuilderLike for PacketFrameBuilder<'a> {
         self.field_count += 1;
         self.data.reserve(6 + value.len());
         self.data.extend_from_slice(&tag.to_be_bytes());
-        self.data.extend_from_slice(&(value.len() as u32).to_be_bytes());
+        self.data
+            .extend_from_slice(&(value.len() as u32).to_be_bytes());
         self.data.extend_from_slice(value);
     }
 
@@ -328,7 +374,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn can_add_child_to_frame() {
         let mut data = Vec::with_capacity(100);
@@ -343,7 +388,7 @@ mod tests {
                 3, 254, // tag = 1022
                 0, 0, 0, 12, // child frame size
                 0, 0, 0, 1, // child frame field count
-                0, 60,  // field-tag in child frame
+                0, 60, // field-tag in child frame
                 0, 0, 0, 2, // field-length in child frame
                 9, 255 // field-value in child frame
             ],
@@ -366,7 +411,7 @@ mod tests {
                 3, 254, // tag = 1022
                 0, 0, 0, 12, // child frame size
                 0, 0, 0, 1, // child frame field count
-                0, 60,  // field-tag in child frame
+                0, 60, // field-tag in child frame
                 0, 0, 0, 2, // field-length in child frame
                 9, 255 // field-value in child frame
             ],
@@ -374,6 +419,41 @@ mod tests {
         );
     }
 
+    #[test]
+    fn can_add_u8_to_frame() {
+        let mut data = Vec::with_capacity(100);
+        {
+            let mut bld = FrameBuilder::new(&mut data);
+            bld.add_u8(1022, 89);
+        }
+        assert_eq!(
+            &[
+                0, 0, 0, 1, // field count = 1
+                3, 254, // tag = 1022
+                0, 0, 0, 1,  // field length = 2
+                89  // field value
+            ],
+            &data[..]
+        );
+    }
+
+    #[test]
+    fn can_add_u16_to_frame() {
+        let mut data = Vec::with_capacity(100);
+        {
+            let mut bld = FrameBuilder::new(&mut data);
+            bld.add_u16(1022, 1009);
+        }
+        assert_eq!(
+            &[
+                0, 0, 0, 1, // field count = 1
+                3, 254, // tag = 1022
+                0, 0, 0, 2, // field length = 2
+                3, 241 // field value (1009)
+            ],
+            &data[..]
+        );
+    }
 
     #[test]
     fn can_add_u32_to_frame() {
@@ -405,7 +485,7 @@ mod tests {
                 0, 0, 0, 1, // field count = 1
                 3, 254, // tag = 1022
                 0, 0, 0, 8, // field length = 2
-                0, 0, 0, 36, 96, 73, 56, 234  // field value (156234234090)
+                0, 0, 0, 36, 96, 73, 56, 234 // field value (156234234090)
             ],
             &data[..]
         );
@@ -423,7 +503,7 @@ mod tests {
                 0, 0, 0, 1, // field count = 1
                 3, 254, // tag = 1022
                 0, 0, 0, 5, // field length = 2
-                104, 101, 108, 108, 111  // field value (156234234090)
+                104, 101, 108, 108, 111 // field value (156234234090)
             ],
             &data[..]
         );
