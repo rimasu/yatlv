@@ -14,7 +14,7 @@
 //!
 //! Structure of the format:
 //! ```abnf
-//! packet       = frame-size frame
+//! packet-frame = frame-size frame
 //! frame-size   = unsigned32
 //! frame        = field-count *field
 //! field-count  = unsigned32
@@ -32,10 +32,33 @@
 //! * the length of `field-value` must match `field-length`.
 //! * `unsigned-16` and `unsigned-32` are encoded using big-endian.
 //!
-//! The root frame can either be encoded as a `frame` or as a `packet`.  Encoding
-//! as a `packet` is useful when sending `frame`s across a stream.
+//! The root frame can either be encoded as a `frame` or as a `packet-frame`.  Encoding
+//! as a `packet-frame` is useful when sending `frame`s across a stream.
 
 const SIZE_BYTES: usize = 4;
+
+/// FrameBuilderLike defines the methods common to [FrameBuilder] and [PacketFrameBuilder].
+pub trait FrameBuilderLike {
+    /// Add a slice of data as a field to the frame.
+    ///
+    /// ```
+    /// use yatlv::{FrameBuilder, FrameBuilderLike};
+    /// let mut data = Vec::with_capacity(100);
+    /// {
+    ///     let mut bld = FrameBuilder::new(&mut data);
+    ///     let tag = 45;
+    ///     let data = &[90, 9];
+    ///     bld.add_data(tag, data);
+    /// }
+    /// assert_eq!(&[
+    ///     0, 0, 0, 1, // field count
+    ///     0, 45,// field-tag
+    ///     0, 0, 0, 2, // field-length
+    ///     90, 9 // field-value
+    /// ], &data[..]);
+    /// ```
+    fn add_data(&mut self, tag: u16, value: &[u8]);
+}
 
 /// FrameBuilder can be used to push a frame into a mutable Vec<u8>
 /// ```
@@ -73,25 +96,37 @@ impl<'a> FrameBuilder<'a> {
     }
 }
 
+impl<'a> FrameBuilderLike for FrameBuilder<'a> {
+
+    fn add_data(&mut self, tag: u16, value: &[u8]) {
+        self.field_count += 1;
+        self.data.reserve(6 + value.len());
+        self.data.extend_from_slice(&tag.to_be_bytes());
+        self.data
+            .extend_from_slice(&(value.len() as u32).to_be_bytes());
+        self.data.extend_from_slice(value);
+    }
+}
+
 /// PacketBuilder can be used to push a packet into a mutable Vec<u8>
 ///
 /// ```
-/// use yatlv::PacketBuilder;
+/// use yatlv::PacketFrameBuilder;
 /// let mut data = Vec::with_capacity(100);
 /// {
-///     PacketBuilder::new(&mut data);
+///     PacketFrameBuilder::new(&mut data);
 /// }
 /// // first 4 bytes indicate the frame is 4 bytes long
 /// // second 4 bytes indicate that the frame has zero fields.
 /// assert_eq!(&[0, 0, 0, 4, 0, 0, 0, 0], &data[..]);
 /// ```
-pub struct PacketBuilder<'a> {
+pub struct PacketFrameBuilder<'a> {
     field_count: u32,
     packet_start: usize,
     data: &'a mut Vec<u8>,
 }
 
-impl<'a> Drop for PacketBuilder<'a> {
+impl<'a> Drop for PacketFrameBuilder<'a> {
     fn drop(&mut self) {
         let packet_length = (self.data.len() - self.packet_start - SIZE_BYTES) as u32;
         self.data[self.packet_start..self.packet_start + SIZE_BYTES]
@@ -101,16 +136,27 @@ impl<'a> Drop for PacketBuilder<'a> {
     }
 }
 
-impl<'a> PacketBuilder<'a> {
-    pub fn new(data: &mut Vec<u8>) -> PacketBuilder {
+impl<'a> PacketFrameBuilder<'a> {
+    pub fn new(data: &mut Vec<u8>) -> PacketFrameBuilder {
         let packet_start = data.len();
         data.extend_from_slice(&[0, 0, 0, 0, 0, 0, 0, 0]);
 
-        PacketBuilder {
+        PacketFrameBuilder {
             field_count: 0,
             packet_start,
             data,
         }
+    }
+}
+
+impl<'a> FrameBuilderLike for PacketFrameBuilder<'a> {
+    fn add_data(&mut self, tag: u16, value: &[u8]) {
+        self.field_count += 1;
+        self.data.reserve(6 + value.len());
+        self.data.extend_from_slice(&tag.to_be_bytes());
+        self.data
+            .extend_from_slice(&(value.len() as u32).to_be_bytes());
+        self.data.extend_from_slice(value);
     }
 }
 
@@ -128,11 +174,48 @@ mod tests {
     }
 
     #[test]
-    fn can_make_an_empty_packet() {
+    fn can_make_an_empty_packet_frame() {
         let mut data = Vec::with_capacity(100);
         {
-            PacketBuilder::new(&mut data);
+            PacketFrameBuilder::new(&mut data);
         }
         assert_eq!(&[0, 0, 0, 4, 0, 0, 0, 0], &data[..]);
+    }
+
+    #[test]
+    fn can_add_data_to_frame() {
+        let mut data = Vec::with_capacity(100);
+        {
+            let mut bld = FrameBuilder::new(&mut data);
+            bld.add_data(1022, &[9, 255]);
+        }
+        assert_eq!(
+            &[
+                0, 0, 0, 1, // field count = 1
+                3, 254, // tag = 1022
+                0, 0, 0, 2, // field length = 2
+                9, 255, // field value
+            ],
+            &data[..]
+        );
+    }
+
+    #[test]
+    fn can_add_data_to_packet_frame() {
+        let mut data = Vec::with_capacity(100);
+        {
+            let mut bld = PacketFrameBuilder::new(&mut data);
+            bld.add_data(1022, &[9, 255]);
+        }
+        assert_eq!(
+            &[
+                0, 0, 0, 12, // frame size = 12
+                0, 0, 0, 1, // field count = 1
+                3, 254, // tag = 1022
+                0, 0, 0, 2, // field length = 2
+                9, 255, // field value
+            ],
+            &data[..]
+        );
     }
 }
