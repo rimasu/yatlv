@@ -45,16 +45,16 @@
 //! # Reading and Writing
 //!
 //! This library tries to make reading and writing reliable and not dependant on
-//! the values being written.  To that end the `add_*` methods for numbers always
-//! use the same number of bytes. Currently only `add_data` and `add_str` can
-//! add a variable number of bytes to the frame.
+//! the values being written.  To that end, the `add_*` methods for numbers always
+//! use the same number of bytes, irrespective of the actually values being written.
+//! Currently only `add_data` and `add_str` can add a variable number of bytes to the frame.
 //!
 //! Reading attempts to be forward compatible, with the following guarantees:
 //!
 //! * Any number written by a smaller `add_u*` method can always be be safely read by a larger one.
-//! So for example a number written using `add_u16` can be safely read by a `get_u32` method.
-//! * Any number written by a large `add_u*` method can be read by a smaller one _if_ the value
-//! is smaller enough.
+//! (e.g., a number written using `add_u16` can be safely read using`get_u32`).
+//! * Any number written by a larger `add_u*` method can be read by a smaller one _if_ the value
+//! is small enough.
 //!
 //! This means that when upgrading a program it should always be safe to increase the range
 //! of a field, but special handling is needed if the range of a field is going to decreased.
@@ -383,6 +383,14 @@ pub enum Error {
     /// Each field must have a value that is field-length long
     /// This error as expected and actual lengths.
     IncompleteFieldValue(usize, usize),
+
+    /// When converting a field to an expected type of value the field length
+    /// must be compatible with the expected value type.
+    IncompatibleFieldLength(usize),
+
+    /// When converting a field into an expected type the value of the field
+    /// must be compatible with the expected type.
+    IncompatibleFieldValue,
 }
 
 /// Library Result Type
@@ -395,7 +403,7 @@ struct FrameParserField<'a> {
 
 /// FrameParser can be used to access field encoded as a frame.
 pub struct FrameParser<'a> {
-    fields: Vec<FrameParserField<'a>>
+    fields: Vec<FrameParserField<'a>>,
 }
 
 fn read_frame_field_count(data: &[u8]) -> Result<(u32, &[u8])> {
@@ -480,8 +488,59 @@ impl<'a> FrameParser<'a> {
         }
         None
     }
+
+    /// Read u8 field from frame
+    ///
+    /// Can handle data stored a 1, 2, 4 or 8 bytes, so long as the value
+    /// is small enough to be returned in a u8.
+    ///
+    /// ```
+    /// # use yatlv::{FrameParser, FrameBuilder, FrameBuilderLike, Result};
+    /// # fn main() -> Result<()> {
+    /// # let mut frame_data = Vec::new();
+    /// # {
+    /// #     let mut bld = FrameBuilder::new(&mut frame_data);
+    /// #     bld.add_u8(12, 9);
+    /// # }
+    /// #
+    /// // Assuming frame_data contains a value frame with a single data field (tag=12, value=9)
+    /// let parser = FrameParser::new(&frame_data)?;
+    /// assert_eq!(Some(9), parser.get_u8(12)?);
+    /// # Ok(()) }
+    ///  ```
+    pub fn get_u8(&self, search_tag: u16) -> Result<Option<u8>> {
+        self.decode_value(search_tag, decode_u8)
+    }
+
+    /// Internal decode value that search for a the field-value of a tag and then
+    /// attempts to convert it to the required type using the supplied `decoder` function.
+    fn decode_value<T, F>(&self, search_tag: u16, decoder: F) -> Result<Option<T>>
+        where
+            F: FnOnce(&[u8]) -> Result<T>,
+    {
+        self.get_data(search_tag).map(|v| decoder(v)).transpose()
+    }
 }
 
+fn decode_u8(value: &[u8]) -> Result<u8> {
+    match value.len() {
+        1 => Ok(value[0]),
+
+        2 => u16::from_be_bytes(value.try_into().unwrap())
+            .try_into()
+            .map_err(|_| Error::IncompatibleFieldValue),
+
+        4 => u32::from_be_bytes(value.try_into().unwrap())
+            .try_into()
+            .map_err(|_| Error::IncompatibleFieldValue),
+
+        8 => u64::from_be_bytes(value.try_into().unwrap())
+            .try_into()
+            .map_err(|_| Error::IncompatibleFieldValue),
+
+        _ => Err(Error::IncompatibleFieldLength(value.len())),
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -702,7 +761,10 @@ mod tests {
     #[test]
     fn can_not_parse_a_frame_if_there_is_not_enough_data_for_field_count() {
         let data = &[0, 0, 0]; // need four bytes for a field count.
-        assert_eq!(Some(Error::IncompleteFrameFieldCount), FrameParser::new(data).err());
+        assert_eq!(
+            Some(Error::IncompleteFrameFieldCount),
+            FrameParser::new(data).err()
+        );
     }
 
     #[test]
@@ -710,9 +772,12 @@ mod tests {
         let data = &[
             0, 0, 0, 1, // field count = 1
             0, 1, // tag = 1
-            0, 0, 0 // incomplete field length
+            0, 0, 0, // incomplete field length
         ];
-        assert_eq!(Some(Error::IncompleteFieldTagOrLength), FrameParser::new(data).err());
+        assert_eq!(
+            Some(Error::IncompleteFieldTagOrLength),
+            FrameParser::new(data).err()
+        );
     }
 
     #[test]
@@ -721,9 +786,12 @@ mod tests {
             0, 0, 0, 1, // field count = 1
             0, 1, // tag = 1
             0, 0, 0, 4, // field length = 4
-            1, 2, 3 // incomplete value
+            1, 2, 3, // incomplete value
         ];
-        assert_eq!(Some(Error::IncompleteFieldValue(4, 3)), FrameParser::new(data).err());
+        assert_eq!(
+            Some(Error::IncompleteFieldValue(4, 3)),
+            FrameParser::new(data).err()
+        );
     }
 
     #[test]
@@ -732,9 +800,71 @@ mod tests {
             0, 0, 0, 1, // field count = 1
             0, 1, // tag = 1
             0, 0, 0, 4, // field length = 4
-            1, 2, 3, 4 //
+            1, 2, 3, 4, //
         ];
         let frame = FrameParser::new(data).unwrap();
         assert_eq!(&[1, 2, 3, 4], frame.get_data(1).unwrap());
+    }
+
+    #[test]
+    fn can_attempt_to_read_data_from_a_frame_if_it_is_not_there() {
+        let data = &[
+            0, 0, 0, 1, // field count = 1
+            0, 1, // tag = 1
+            0, 0, 0, 4, // field length = 4
+            1, 2, 3, 4, //
+        ];
+        let frame = FrameParser::new(data).unwrap();
+        assert_eq!(None, frame.get_data(3));
+    }
+
+    #[test]
+    fn can_not_decode_u8_with_zero_bytes() {
+        assert_eq!(
+            Some(Error::IncompatibleFieldLength(0)),
+            decode_u8(&[]).err()
+        );
+    }
+
+    #[test]
+    fn can_decode_compatible_values_into_u8() {
+        assert_eq!(Ok(8), decode_u8(&[8]));
+        assert_eq!(Ok(8), decode_u8(&[0, 8]));
+        assert_eq!(Ok(8), decode_u8(&[0, 0, 0, 8]));
+        assert_eq!(Ok(8), decode_u8(&[0, 0, 0, 0, 0, 0, 0, 8]));
+    }
+
+    #[test]
+    fn can_not_decode_incompatible_values_into_u8() {
+        assert_eq!(
+            Some(Error::IncompatibleFieldValue),
+            decode_u8(&[1, 8]).err()
+        );
+        assert_eq!(
+            Some(Error::IncompatibleFieldValue),
+            decode_u8(&[0, 0, 1, 8]).err()
+        );
+        assert_eq!(
+            Some(Error::IncompatibleFieldValue),
+            decode_u8(&[0, 0, 0, 0, 0, 0, 1, 8]).err()
+        );
+    }
+
+    #[test]
+    fn can_read_u8_from_a_frame() {
+        let mut data = Vec::new();
+        {
+            let mut bld = FrameBuilder::new(&mut data);
+            bld.add_u8(100, 250);
+            bld.add_u16(200, 251);
+            bld.add_u32(300, 252);
+            bld.add_u64(400, 253);
+        }
+
+        let frame = FrameParser::new(&data).unwrap();
+        assert_eq!(Some(250), frame.get_u8(100).unwrap());
+        assert_eq!(Some(251), frame.get_u8(200).unwrap());
+        assert_eq!(Some(252), frame.get_u8(300).unwrap());
+        assert_eq!(Some(253), frame.get_u8(400).unwrap());
     }
 }

@@ -44,3 +44,21 @@ conventions should normally be observed:
 * boolean values are encoded using a single byte (`0x00`=`false`, `0xFF`=`true`)
 * text is encoded as UTF-8
 
+## Reading and Writing
+
+This library tries to make reading and writing reliable and not dependant on
+the values being written.  To that end, the `add_*` methods for numbers always
+use the same number of bytes, irrespective of the actually values being written.
+Currently only `add_data` and `add_str` can add a variable number of bytes to the frame.
+
+Reading attempts to be forward compatible, with the following guarantees:
+
+* Any number written by a smaller `add_u*` method can always be be safely read by a larger one.
+(e.g., a number written using `add_u16` can be safely read using`get_u32`).
+* Any number written by a larger `add_u*` method can be read by a smaller one _if_ the value
+is small enough.
+
+This means that when upgrading a program it should always be safe to increase the range
+of a field, but special handling is needed if the range of a field is going to decreased.
+
+
