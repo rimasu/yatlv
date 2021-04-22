@@ -492,7 +492,7 @@ impl<'a> FrameParser<'a> {
     /// Read u8 field from frame
     ///
     /// Can handle data stored a 1, 2, 4 or 8 bytes, so long as the value
-    /// is small enough to be returned in a u8.
+    /// is small enough to be returned in a `u8`.
     ///
     /// ```
     /// # use yatlv::{FrameParser, FrameBuilder, FrameBuilderLike, Result};
@@ -511,6 +511,30 @@ impl<'a> FrameParser<'a> {
     pub fn get_u8(&self, search_tag: u16) -> Result<Option<u8>> {
         self.decode_value(search_tag, decode_u8)
     }
+
+    /// Read u16 field from frame
+    ///
+    /// Can handle data stored a 1, 2, 4 or 8 bytes, so long as the value
+    /// is small enough to be returned in a `u16`.
+    ///
+    /// ```
+    /// # use yatlv::{FrameParser, FrameBuilder, FrameBuilderLike, Result};
+    /// # fn main() -> Result<()> {
+    /// # let mut frame_data = Vec::new();
+    /// # {
+    /// #     let mut bld = FrameBuilder::new(&mut frame_data);
+    /// #     bld.add_u16(12, 1024);
+    /// # }
+    /// #
+    /// // Assuming frame_data contains a value frame with a single data field (tag=12, value=1024)
+    /// let parser = FrameParser::new(&frame_data)?;
+    /// assert_eq!(Some(1024), parser.get_u16(12)?);
+    /// # Ok(()) }
+    ///  ```
+    pub fn get_u16(&self, search_tag: u16) -> Result<Option<u16>> {
+        self.decode_value(search_tag, decode_u16)
+    }
+
 
     /// Internal decode value that search for a the field-value of a tag and then
     /// attempts to convert it to the required type using the supplied `decoder` function.
@@ -541,6 +565,25 @@ fn decode_u8(value: &[u8]) -> Result<u8> {
         _ => Err(Error::IncompatibleFieldLength(value.len())),
     }
 }
+
+fn decode_u16(value: &[u8]) -> Result<u16> {
+    match value.len() {
+        1 => Ok(value[0] as u16),
+
+        2 => Ok(u16::from_be_bytes(value.try_into().unwrap())),
+
+        4 => u32::from_be_bytes(value.try_into().unwrap())
+            .try_into()
+            .map_err(|_| Error::IncompatibleFieldValue),
+
+        8 => u64::from_be_bytes(value.try_into().unwrap())
+            .try_into()
+            .map_err(|_| Error::IncompatibleFieldValue),
+
+        _ => Err(Error::IncompatibleFieldLength(value.len())),
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -866,5 +909,51 @@ mod tests {
         assert_eq!(Some(251), frame.get_u8(200).unwrap());
         assert_eq!(Some(252), frame.get_u8(300).unwrap());
         assert_eq!(Some(253), frame.get_u8(400).unwrap());
+    }
+
+    #[test]
+    fn can_not_decode_u16_with_zero_bytes() {
+        assert_eq!(
+            Some(Error::IncompatibleFieldLength(0)),
+            decode_u16(&[]).err()
+        );
+    }
+
+    #[test]
+    fn can_decode_compatible_values_into_u16() {
+        assert_eq!(Ok(8), decode_u16(&[8]));
+        assert_eq!(Ok(3080), decode_u16(&[12, 8]));
+        assert_eq!(Ok(3080), decode_u16(&[0, 0, 12, 8]));
+        assert_eq!(Ok(3080), decode_u16(&[0, 0, 0, 0, 0, 0, 12, 8]));
+    }
+
+    #[test]
+    fn can_not_decode_incompatible_values_into_u16() {
+        assert_eq!(
+            Some(Error::IncompatibleFieldValue),
+            decode_u16(&[0, 1, 255, 255]).err()
+        );
+        assert_eq!(
+            Some(Error::IncompatibleFieldValue),
+            decode_u16(&[0, 0, 0, 0, 0, 1, 255, 255]).err()
+        );
+    }
+
+    #[test]
+    fn can_read_u16_from_a_frame() {
+        let mut data = Vec::new();
+        {
+            let mut bld = FrameBuilder::new(&mut data);
+            bld.add_u8(100, 90);
+            bld.add_u16(200, 1025);
+            bld.add_u32(300, 1026);
+            bld.add_u64(400, 1027);
+        }
+
+        let frame = FrameParser::new(&data).unwrap();
+        assert_eq!(Some(90), frame.get_u16(100).unwrap());
+        assert_eq!(Some(1025), frame.get_u16(200).unwrap());
+        assert_eq!(Some(1026), frame.get_u16(300).unwrap());
+        assert_eq!(Some(1027), frame.get_u16(400).unwrap());
     }
 }
