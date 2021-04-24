@@ -582,11 +582,45 @@ impl<'a> FrameParser<'a> {
         self.decode_value(search_tag, decode_u64)
     }
 
-    /// Internal decode value that search for a the field-value of a tag and then
+    /// Attempt to find field-value of field that has the search_tag and then
     /// attempts to convert it to the required type using the supplied `decoder` function.
     fn decode_value<T, F>(&self, search_tag: u16, decoder: F) -> Result<Option<T>>
         where
             F: FnOnce(&[u8]) -> Result<T>,
+    {
+        self.get_data(search_tag).map(|v| decoder(v)).transpose()
+    }
+
+
+
+    /// Read utf8 field from frame
+    ///
+    ///
+    /// ```
+    /// # use yatlv::{FrameParser, FrameBuilder, FrameBuilderLike, Result};
+    /// # fn main() -> Result<()> {
+    /// # let mut frame_data = Vec::new();
+    /// # {
+    /// #     let mut bld = FrameBuilder::new(&mut frame_data);
+    /// #     bld.add_utf8(12, "test_str");
+    /// # }
+    /// #
+    /// // Assuming frame_data contains a frame with a
+    /// // single data field (tag=12, value="test_str" in UTF-8)
+    /// let parser = FrameParser::new(&frame_data)?;
+    /// assert_eq!(Some("test_str"), parser.get_utf8(12)?);
+    /// # Ok(()) }
+    ///  ```
+    pub fn get_utf8(&self, search_tag: u16) -> Result<Option<&str>> {
+        self.decode_ref(search_tag, decode_utf8)
+    }
+
+    /// Attempt to find field-value of field that has the search_tag and then
+    /// attempts to convert it to the required type using the supplied `decoder` function.
+    fn decode_ref<T, F>(&self, search_tag: u16, decoder: F) -> Result<Option<&T>>
+        where
+            F: FnOnce(&[u8]) -> Result<&T>,
+            T: ?Sized
     {
         self.get_data(search_tag).map(|v| decoder(v)).transpose()
     }
@@ -658,6 +692,10 @@ fn decode_u64(value: &[u8]) -> Result<u64> {
 
         _ => Err(Error::IncompatibleFieldLength(value.len())),
     }
+}
+
+fn decode_utf8(value: &[u8]) -> Result<&str> {
+    std::str::from_utf8(value).map_err(|_| Error::IncompatibleFieldValue)
 }
 
 
@@ -1109,5 +1147,21 @@ mod tests {
         assert_eq!(Some(1025), frame.get_u64(200).unwrap());
         assert_eq!(Some(1744964616), frame.get_u64(300).unwrap());
         assert_eq!(Some(150626523450313736), frame.get_u64(400).unwrap());
+    }
+
+
+    #[test]
+    fn can_read_str_from_a_frame() {
+        let test_str = "short test string";
+        let mut data = Vec::new();
+
+        {
+            let mut bld = FrameBuilder::new(&mut data);
+            bld.add_utf8(100, test_str);
+
+        }
+
+        let frame = FrameParser::new(&data).unwrap();
+        assert_eq!(Some(test_str), frame.get_utf8(100).unwrap());
     }
 }
