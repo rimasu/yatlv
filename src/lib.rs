@@ -64,7 +64,6 @@
 //!
 
 use std::convert::TryInto;
-
 const SIZE_BYTES: usize = 4;
 
 /// FrameBuilderLike defines the methods common to [FrameBuilder] and [PacketFrameBuilder].
@@ -826,7 +825,7 @@ impl<'a> FrameParser<'a> {
         self.get_data(search_tag).map(|v| decoder(v)).transpose()
     }
 
-    /// Read utf8 field from frame
+    /// Read UTF-8 field from frame
     ///
     /// ```
     /// # use yatlv::{FrameParser, FrameBuilder, FrameBuilderLike, Result};
@@ -845,6 +844,32 @@ impl<'a> FrameParser<'a> {
     ///  ```
     pub fn get_utf8(&self, search_tag: u16) -> Result<Option<&str>> {
         self.decode_ref(search_tag, decode_utf8)
+    }
+
+
+    /// Read UTF-8 fields from frame
+    ///
+    /// ```
+    /// # use yatlv::{FrameParser, FrameBuilder, FrameBuilderLike, Result};
+    /// # fn main() -> Result<()> {
+    /// # let mut frame_data = Vec::new();
+    /// # {
+    /// #     let mut bld = FrameBuilder::new(&mut frame_data);
+    /// #     bld.add_utf8(12, "hello");
+    /// #     bld.add_utf8(12, "goodbye");
+    /// # }
+    /// #
+    /// // Assuming frame_data contains a frame with a two fields
+    /// // (tag=12, value1="hello", value2="goodbye")
+    /// let parser = FrameParser::new(&frame_data)?;
+    /// let expected : Vec<Result<&str>> = vec![Ok("hello"), Ok("goodbye")];
+    /// let actual: Vec<Result<&str>> = parser.get_utf8s(12).collect();
+    /// assert_eq!(expected, actual);
+    /// # Ok(()) }
+    ///  ```
+    pub fn get_utf8s<'b>(&'b self, search_tag: u16) -> impl Iterator<Item=Result<&'a str>> + 'b where 'b: 'a {
+        self.get_datas(search_tag)
+            .map(|v| decode_utf8(v))
     }
 
     /// Attempt to find field-value of field that has the search_tag and then
@@ -1612,20 +1637,14 @@ mod tests {
 
     #[test]
     fn can_read_bools_from_a_frame() {
-        let data = &[
-            1, // frame format
-            0, 0, 0, 3, // field count = 3
-            0, 1, // tag = 1
-            0, 0, 0, 1, // field length = 2
-            0x00, //
-            0, 2, // tag = 2, will be skipped
-            0, 0, 0, 1, // field length = 2
-            0x00, //
-            0, 1, // tag = 1
-            0, 0, 0, 1, // field length = 2
-            0xFF, //
-        ];
-        let frame = FrameParser::new(data).unwrap();
+        let mut data = Vec::new();
+        {
+            let mut bld = FrameBuilder::new(&mut data);
+            bld.add_bool(1, false);
+            bld.add_bool(2, false); // will be ignored
+            bld.add_bool(1, true);
+        }
+        let frame = FrameParser::new(&data).unwrap();
         let expected: Vec<Result<bool>> = vec![Ok(false), Ok(true)];
         let actual: Vec<Result<bool>> = frame.get_bools(1).collect();
         assert_eq!(expected, actual);
@@ -1643,6 +1662,21 @@ mod tests {
 
         let frame = FrameParser::new(&data).unwrap();
         assert_eq!(Some(test_str), frame.get_utf8(100).unwrap());
+    }
+
+    #[test]
+    fn can_read_strs_from_a_frame() {
+        let mut data = Vec::new();
+        {
+            let mut bld = FrameBuilder::new(&mut data);
+            bld.add_utf8(1, "hello");
+            bld.add_utf8(2, "welcome"); // will be ignored
+            bld.add_utf8(1, "goodbye");
+        }
+        let frame = FrameParser::new(&data).unwrap();
+        let expected: Vec<Result<&str>> = vec![Ok("hello"), Ok("goodbye")];
+        let actual: Vec<Result<&str>> = frame.get_utf8s(1).collect();
+        assert_eq!(expected, actual);
     }
 
     #[test]
