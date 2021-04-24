@@ -559,6 +559,29 @@ impl<'a> FrameParser<'a> {
         self.decode_value(search_tag, decode_u32)
     }
 
+    /// Read u64 field from frame
+    ///
+    /// Can handle data stored a 1, 2, 4 or 8 bytes.
+    ///
+    /// ```
+    /// # use yatlv::{FrameParser, FrameBuilder, FrameBuilderLike, Result};
+    /// # fn main() -> Result<()> {
+    /// # let mut frame_data = Vec::new();
+    /// # {
+    /// #     let mut bld = FrameBuilder::new(&mut frame_data);
+    /// #     bld.add_u64(12, 150626523450313736);
+    /// # }
+    /// #
+    /// // Assuming frame_data contains a frame with a
+    /// // single data field (tag=12, value=150626523450313736)
+    /// let parser = FrameParser::new(&frame_data)?;
+    /// assert_eq!(Some(150626523450313736), parser.get_u64(12)?);
+    /// # Ok(()) }
+    ///  ```
+    pub fn get_u64(&self, search_tag: u16) -> Result<Option<u64>> {
+        self.decode_value(search_tag, decode_u64)
+    }
+
     /// Internal decode value that search for a the field-value of a tag and then
     /// attempts to convert it to the required type using the supplied `decoder` function.
     fn decode_value<T, F>(&self, search_tag: u16, decoder: F) -> Result<Option<T>>
@@ -618,6 +641,20 @@ fn decode_u32(value: &[u8]) -> Result<u32> {
         8 => u64::from_be_bytes(value.try_into().unwrap())
             .try_into()
             .map_err(|_| Error::IncompatibleFieldValue),
+
+        _ => Err(Error::IncompatibleFieldLength(value.len())),
+    }
+}
+
+fn decode_u64(value: &[u8]) -> Result<u64> {
+    match value.len() {
+        1 => Ok(value[0] as u64),
+
+        2 => Ok(u16::from_be_bytes(value.try_into().unwrap()) as u64),
+
+        4 => Ok(u32::from_be_bytes(value.try_into().unwrap()) as u64),
+
+        8 => Ok(u64::from_be_bytes(value.try_into().unwrap())),
 
         _ => Err(Error::IncompatibleFieldLength(value.len())),
     }
@@ -1037,5 +1074,40 @@ mod tests {
         assert_eq!(Some(1025), frame.get_u32(200).unwrap());
         assert_eq!(Some(1744964616), frame.get_u32(300).unwrap());
         assert_eq!(Some(1744964617), frame.get_u32(400).unwrap());
+    }
+
+
+    #[test]
+    fn can_not_decode_u64_with_zero_bytes() {
+        assert_eq!(
+            Some(Error::IncompatibleFieldLength(0)),
+            decode_u64(&[]).err()
+        );
+    }
+
+    #[test]
+    fn can_decode_compatible_values_into_u64() {
+        assert_eq!(Ok(8), decode_u64(&[8]));
+        assert_eq!(Ok(3080), decode_u64(&[12, 8]));
+        assert_eq!(Ok(1744964616), decode_u64(&[104, 2, 12, 8]));
+        assert_eq!(Ok(150626523450313736), decode_u64(&[2, 23, 34, 6, 104, 2, 12, 8]));
+    }
+
+    #[test]
+    fn can_read_u64_from_a_frame() {
+        let mut data = Vec::new();
+        {
+            let mut bld = FrameBuilder::new(&mut data);
+            bld.add_u8(100, 90);
+            bld.add_u16(200, 1025);
+            bld.add_u32(300, 1744964616);
+            bld.add_u64(400, 150626523450313736);
+        }
+
+        let frame = FrameParser::new(&data).unwrap();
+        assert_eq!(Some(90), frame.get_u64(100).unwrap());
+        assert_eq!(Some(1025), frame.get_u64(200).unwrap());
+        assert_eq!(Some(1744964616), frame.get_u64(300).unwrap());
+        assert_eq!(Some(150626523450313736), frame.get_u64(400).unwrap());
     }
 }
