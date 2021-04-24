@@ -1,4 +1,4 @@
-# yatlv
+[![Rust](https://github.com/rimasu/yatlv/actions/workflows/rust.yml/badge.svg)](https://github.com/rimasu/yatlv/actions/workflows/rust.yml)
 
 Yet Another Tag Length Value (YATLV) format.
 
@@ -64,3 +64,12 @@ This means that when upgrading a program it should always be safe to increase th
 of a field, but special handling is needed if the range of a field is going to decreased.
 
 
+
+This is a hobby project; I don't have the bandwidth
+to properly maintain this.  You are welcome to use
+and fork at your risk, but I would not recommend this
+crate for any serious work.
+
+Current version: 1.0.0
+
+License: MIT/Apache-2.0

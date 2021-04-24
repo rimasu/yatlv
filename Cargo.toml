@@ -3,6 +3,8 @@ name = "yatlv"
 version = "1.0.0"
 authors = ["Richard Sunderland <798934+rimasu@users.noreply.github.com>"]
 edition = "2018"
+license = "MIT/Apache-2.0"
+
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
