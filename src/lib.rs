@@ -792,6 +792,31 @@ impl<'a> FrameParser<'a> {
         self.decode_value(search_tag, decode_bool)
     }
 
+    /// Read bool fields from frame
+    ///
+    /// ```
+    /// # use yatlv::{FrameParser, FrameBuilder, FrameBuilderLike, Result};
+    /// # fn main() -> Result<()> {
+    /// # let mut frame_data = Vec::new();
+    /// # {
+    /// #     let mut bld = FrameBuilder::new(&mut frame_data);
+    /// #     bld.add_bool(12, false);
+    /// #     bld.add_bool(12, true);
+    /// # }
+    /// #
+    /// // Assuming frame_data contains a frame with a two fields
+    /// // (tag=12, value1=false, value2=true)
+    /// let parser = FrameParser::new(&frame_data)?;
+    /// let expected : Vec<Result<bool>> = vec![Ok(false), Ok(true)];
+    /// let actual: Vec<Result<bool>> = parser.get_bools(12).collect();
+    /// assert_eq!(expected, actual);
+    /// # Ok(()) }
+    ///  ```
+    pub fn get_bools<'b>(&'b self, search_tag: u16) -> impl Iterator<Item=Result<bool>> + 'b where 'b: 'a {
+        self.get_datas(search_tag)
+            .map(|v| decode_bool(v))
+    }
+
     /// Attempt to find field-value of field that has the search_tag and then
     /// attempts to convert it to the required type using the supplied `decoder` function.
     fn decode_value<T, F>(&self, search_tag: u16, decoder: F) -> Result<Option<T>>
@@ -1583,6 +1608,27 @@ mod tests {
         let frame = FrameParser::new(&data).unwrap();
         assert_eq!(Some(true), frame.get_bool(100).unwrap());
         assert_eq!(Some(false), frame.get_bool(200).unwrap());
+    }
+
+    #[test]
+    fn can_read_bools_from_a_frame() {
+        let data = &[
+            1, // frame format
+            0, 0, 0, 3, // field count = 3
+            0, 1, // tag = 1
+            0, 0, 0, 1, // field length = 2
+            0x00, //
+            0, 2, // tag = 2, will be skipped
+            0, 0, 0, 1, // field length = 2
+            0x00, //
+            0, 1, // tag = 1
+            0, 0, 0, 1, // field length = 2
+            0xFF, //
+        ];
+        let frame = FrameParser::new(data).unwrap();
+        let expected: Vec<Result<bool>> = vec![Ok(false), Ok(true)];
+        let actual: Vec<Result<bool>> = frame.get_bools(1).collect();
+        assert_eq!(expected, actual);
     }
 
     #[test]
