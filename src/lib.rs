@@ -659,7 +659,6 @@ impl<'a> FrameParser<'a> {
 
     /// Read utf8 field from frame
     ///
-    ///
     /// ```
     /// # use yatlv::{FrameParser, FrameBuilder, FrameBuilderLike, Result};
     /// # fn main() -> Result<()> {
@@ -687,6 +686,32 @@ impl<'a> FrameParser<'a> {
             T: ?Sized
     {
         self.get_data(search_tag).map(|v| decoder(v)).transpose()
+    }
+
+    /// Read a child frame from a frame.
+    ///
+    /// ```
+    /// # use yatlv::{FrameParser, FrameBuilder, FrameBuilderLike, Result};
+    /// # fn main() -> Result<()> {
+    /// # let mut frame_data = Vec::new();
+    /// # {
+    /// #     let mut bld = FrameBuilder::new(&mut frame_data);
+    /// #     let mut bld2 = bld.add_child(12);
+    /// #     bld2.add_u8(13, 2);
+    /// # }
+    /// #
+    /// // Assuming frame_data contains a frame with a
+    /// // child frame (tag=12) which contains a single
+    /// // value (tag=13, value=2)
+    /// let parser = FrameParser::new(&frame_data)?;
+    /// let child_parser = parser.get_child(12)?.unwrap();
+    /// assert_eq!(Some(2), child_parser.get_u8(13)?);
+    /// # Ok(()) }
+    ///  ```
+    pub fn get_child(&self, search_tag: u16) -> Result<Option<FrameParser>> {
+        self.get_data(search_tag)
+            .map(|v| FrameParser::new(v))
+            .transpose()
     }
 }
 
@@ -1306,5 +1331,20 @@ mod tests {
 
         let frame = FrameParser::new(&data).unwrap();
         assert_eq!(Some(test_str), frame.get_utf8(100).unwrap());
+    }
+
+    #[test]
+    fn can_read_child_frame() {
+        let mut data = Vec::new();
+        {
+            let mut bld = FrameBuilder::new(&mut data);
+            bld.add_u8(100, 1);
+            let mut bld2 = bld.add_child(200);
+            bld2.add_u8(300, 3);
+        }
+
+        let frame = FrameParser::new(&data).unwrap();
+        let child_frame = frame.get_child(200).unwrap().unwrap();
+        assert_eq!(Some(3), child_frame.get_u8(300).unwrap());
     }
 }
