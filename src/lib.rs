@@ -235,7 +235,7 @@ pub trait FrameBuilderLike {
         self.add_data(tag, &value.to_be_bytes())
     }
 
-    /// Add a UTF-8 field to the frame.
+    /// Add a str field to the frame.
     ///
     /// ```
     /// use yatlv::{FrameBuilder, FrameBuilderLike};
@@ -244,7 +244,7 @@ pub trait FrameBuilderLike {
     ///     let mut bld = FrameBuilder::new(&mut data);
     ///     let tag = 45;
     ///     let data = "hello";
-    ///     bld.add_utf8(tag, data);
+    ///     bld.add_str(tag, data);
     /// }
     /// assert_eq!(&[
     ///     1,                      // frame-format
@@ -254,7 +254,7 @@ pub trait FrameBuilderLike {
     ///     104, 101, 108, 108, 111 // field-value
     /// ], &data[..]);
     /// ```
-    fn add_utf8<S>(&mut self, tag: u16, value: S)
+    fn add_str<S>(&mut self, tag: u16, value: S)
         where
             S: AsRef<str>,
     {
@@ -825,7 +825,7 @@ impl<'a> FrameParser<'a> {
         self.get_data(search_tag).map(|v| decoder(v)).transpose()
     }
 
-    /// Read UTF-8 field from frame
+    /// Read str field from frame
     ///
     /// ```
     /// # use yatlv::{FrameParser, FrameBuilder, FrameBuilderLike, Result};
@@ -833,21 +833,21 @@ impl<'a> FrameParser<'a> {
     /// # let mut frame_data = Vec::new();
     /// # {
     /// #     let mut bld = FrameBuilder::new(&mut frame_data);
-    /// #     bld.add_utf8(12, "test_str");
+    /// #     bld.add_str(12, "test_str");
     /// # }
     /// #
     /// // Assuming frame_data contains a frame with a
     /// // single data field (tag=12, value="test_str" in UTF-8)
     /// let parser = FrameParser::new(&frame_data)?;
-    /// assert_eq!(Some("test_str"), parser.get_utf8(12)?);
+    /// assert_eq!(Some("test_str"), parser.get_str(12)?);
     /// # Ok(()) }
     ///  ```
-    pub fn get_utf8(&self, search_tag: u16) -> Result<Option<&str>> {
-        self.decode_ref(search_tag, decode_utf8)
+    pub fn get_str(&self, search_tag: u16) -> Result<Option<&str>> {
+        self.decode_ref(search_tag, decode_str)
     }
 
 
-    /// Read UTF-8 fields from frame
+    /// Read str fields from frame
     ///
     /// ```
     /// # use yatlv::{FrameParser, FrameBuilder, FrameBuilderLike, Result};
@@ -855,21 +855,21 @@ impl<'a> FrameParser<'a> {
     /// # let mut frame_data = Vec::new();
     /// # {
     /// #     let mut bld = FrameBuilder::new(&mut frame_data);
-    /// #     bld.add_utf8(12, "hello");
-    /// #     bld.add_utf8(12, "goodbye");
+    /// #     bld.add_str(12, "hello");
+    /// #     bld.add_str(12, "goodbye");
     /// # }
     /// #
     /// // Assuming frame_data contains a frame with a two fields
     /// // (tag=12, value1="hello", value2="goodbye")
     /// let parser = FrameParser::new(&frame_data)?;
     /// let expected : Vec<Result<&str>> = vec![Ok("hello"), Ok("goodbye")];
-    /// let actual: Vec<Result<&str>> = parser.get_utf8s(12).collect();
+    /// let actual: Vec<Result<&str>> = parser.get_strs(12).collect();
     /// assert_eq!(expected, actual);
     /// # Ok(()) }
     ///  ```
-    pub fn get_utf8s<'b>(&'b self, search_tag: u16) -> impl Iterator<Item=Result<&'a str>> + 'b where 'b: 'a {
+    pub fn get_strs<'b>(&'b self, search_tag: u16) -> impl Iterator<Item=Result<&'a str>> + 'b where 'b: 'a {
         self.get_datas(search_tag)
-            .map(|v| decode_utf8(v))
+            .map(|v| decode_str(v))
     }
 
     /// Attempt to find field-value of field that has the search_tag and then
@@ -988,7 +988,7 @@ fn decode_bool(value: &[u8]) -> Result<bool> {
     }
 }
 
-fn decode_utf8(value: &[u8]) -> Result<&str> {
+fn decode_str(value: &[u8]) -> Result<&str> {
     std::str::from_utf8(value).map_err(|_| Error::IncompatibleFieldValue)
 }
 
@@ -1206,7 +1206,7 @@ mod tests {
         let mut data = Vec::with_capacity(100);
         {
             let mut bld = FrameBuilder::new(&mut data);
-            bld.add_utf8(1022, "hello");
+            bld.add_str(1022, "hello");
         }
         assert_eq!(
             &[
@@ -1657,11 +1657,11 @@ mod tests {
 
         {
             let mut bld = FrameBuilder::new(&mut data);
-            bld.add_utf8(100, test_str);
+            bld.add_str(100, test_str);
         }
 
         let frame = FrameParser::new(&data).unwrap();
-        assert_eq!(Some(test_str), frame.get_utf8(100).unwrap());
+        assert_eq!(Some(test_str), frame.get_str(100).unwrap());
     }
 
     #[test]
@@ -1669,13 +1669,13 @@ mod tests {
         let mut data = Vec::new();
         {
             let mut bld = FrameBuilder::new(&mut data);
-            bld.add_utf8(1, "hello");
-            bld.add_utf8(2, "welcome"); // will be ignored
-            bld.add_utf8(1, "goodbye");
+            bld.add_str(1, "hello");
+            bld.add_str(2, "welcome"); // will be ignored
+            bld.add_str(1, "goodbye");
         }
         let frame = FrameParser::new(&data).unwrap();
         let expected: Vec<Result<&str>> = vec![Ok("hello"), Ok("goodbye")];
-        let actual: Vec<Result<&str>> = frame.get_utf8s(1).collect();
+        let actual: Vec<Result<&str>> = frame.get_strs(1).collect();
         assert_eq!(expected, actual);
     }
 
