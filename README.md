@@ -18,7 +18,8 @@ Structure of the format:
 ```abnf
 packet-frame = frame-size frame
 frame-size   = unsigned32
-frame        = field-count *field
+frame        = frame-format field-count *field
+frame-format = 0x01
 field-count  = unsigned32
 field        = field-tag field-length field-value
 field-tag    = unsigned16
@@ -30,6 +31,7 @@ octet-array  = *0x00-0xFF
 ```
 Where:
 
+* frame-format is always 0x01, but alternative formats may be added later
 * the number `field`s must match `field-count`
 * the length of `field-value` must match `field-length`.
 * `unsigned-16` and `unsigned-32` are encoded using big-endian.
