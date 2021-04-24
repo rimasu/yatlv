@@ -432,7 +432,7 @@ pub struct FrameParser<'a> {
 }
 
 enum FrameFormat {
-    Format1
+    Format1,
 }
 
 fn read_frame_format(data: &[u8]) -> Result<(FrameFormat, &[u8])> {
@@ -441,7 +441,7 @@ fn read_frame_format(data: &[u8]) -> Result<(FrameFormat, &[u8])> {
         let raw_format = field_count_bytes[0];
         let format = match raw_format {
             0x01 => Ok(FrameFormat::Format1),
-            _ => Err(Error::InvalidFrameFormat(raw_format as u32))
+            _ => Err(Error::InvalidFrameFormat(raw_format as u32)),
         }?;
         Ok((format, tail))
     } else {
@@ -531,6 +531,32 @@ impl<'a> FrameParser<'a> {
             }
         }
         None
+    }
+
+    /// Read fields from frame.
+    /// ```
+    /// # use yatlv::{FrameParser, FrameBuilder, FrameBuilderLike, Result};
+    /// # fn main() -> Result<()> {
+    /// # let mut frame_data = Vec::new();
+    /// # {
+    /// #     let mut bld = FrameBuilder::new(&mut frame_data);
+    /// #     bld.add_data(12, &[4, 5]);
+    /// #     bld.add_data(12, &[3, 5]);
+    /// # }
+    /// #
+    /// // Assuming frame_data contains a frame with a two fields
+    /// // (tag=12, value1=[4, 5], value2=[3, 5])
+    /// let parser = FrameParser::new(&frame_data)?;
+    /// let expected = vec![&[4, 5], &[3, 5]];
+    /// let actual: Vec<&[u8]> =  parser.get_datas(12).collect();
+    /// assert_eq!(expected, actual);
+    /// # Ok(()) }
+    ///  ```
+    pub fn get_datas(&self, search_tag: u16) -> impl Iterator<Item=&[u8]> {
+        self.fields
+            .iter()
+            .filter(move |f| f.tag == search_tag)
+            .map(|f| f.value)
     }
 
     /// Read u8 field from frame
@@ -656,7 +682,6 @@ impl<'a> FrameParser<'a> {
         self.get_data(search_tag).map(|v| decoder(v)).transpose()
     }
 
-
     /// Read utf8 field from frame
     ///
     /// ```
@@ -683,7 +708,7 @@ impl<'a> FrameParser<'a> {
     fn decode_ref<T, F>(&self, search_tag: u16, decoder: F) -> Result<Option<&T>>
         where
             F: FnOnce(&[u8]) -> Result<&T>,
-            T: ?Sized
+            T: ?Sized,
     {
         self.get_data(search_tag).map(|v| decoder(v)).transpose()
     }
@@ -790,14 +815,13 @@ fn decode_bool(value: &[u8]) -> Result<bool> {
     match value[0] {
         0x00 => Ok(false),
         0xFF => Ok(true),
-        _ => Err(Error::IncompatibleFieldValue)
+        _ => Err(Error::IncompatibleFieldValue),
     }
 }
 
 fn decode_utf8(value: &[u8]) -> Result<&str> {
     std::str::from_utf8(value).map_err(|_| Error::IncompatibleFieldValue)
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -850,7 +874,7 @@ mod tests {
         assert_eq!(
             &[
                 0, 0, 0, 13, // frame size = 13
-                1, // frame format
+                1,  // frame format
                 0, 0, 0, 1, // field count = 1
                 3, 254, // tag = 1022
                 0, 0, 0, 2, // field length = 2
@@ -874,7 +898,7 @@ mod tests {
                 0, 0, 0, 1, // field count = 1
                 3, 254, // tag = 1022
                 0, 0, 0, 13, // child frame size
-                1, // child frame format
+                1,  // child frame format
                 0, 0, 0, 1, // child frame field count
                 0, 60, // field-tag in child frame
                 0, 0, 0, 2, // field-length in child frame
@@ -895,11 +919,11 @@ mod tests {
         assert_eq!(
             &[
                 0, 0, 0, 24, // packet size
-                1, // frame format
+                1,  // frame format
                 0, 0, 0, 1, // field count = 1
                 3, 254, // tag = 1022
                 0, 0, 0, 13, // child frame size
-                1, // child frame format
+                1,  // child frame format
                 0, 0, 0, 1, // child frame field count
                 0, 60, // field-tag in child frame
                 0, 0, 0, 2, // field-length in child frame
@@ -1097,6 +1121,27 @@ mod tests {
     }
 
     #[test]
+    fn can_read_datas_from_a_frame() {
+        let data = &[
+            1, // frame format
+            0, 0, 0, 3, // field count = 3
+            0, 1, // tag = 1
+            0, 0, 0, 2, // field length = 2
+            10, 11, //
+            0, 2, // tag = 2, will be skipped
+            0, 0, 0, 2, // field length = 2
+            20, 22, //
+            0, 1, // tag = 1
+            0, 0, 0, 2, // field length = 2
+            30, 33, //
+        ];
+        let frame = FrameParser::new(data).unwrap();
+        let expected = vec![&[10, 11], &[30, 33]];
+        let actual: Vec<&[u8]> = frame.get_datas(1).collect();
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
     fn can_attempt_to_read_data_from_a_frame_if_it_is_not_there() {
         let data = &[
             1, // frame format
@@ -1205,7 +1250,6 @@ mod tests {
         assert_eq!(Some(1027), frame.get_u16(400).unwrap());
     }
 
-
     #[test]
     fn can_not_decode_u32_with_zero_bytes() {
         assert_eq!(
@@ -1261,7 +1305,10 @@ mod tests {
         assert_eq!(Ok(8), decode_u64(&[8]));
         assert_eq!(Ok(3080), decode_u64(&[12, 8]));
         assert_eq!(Ok(1744964616), decode_u64(&[104, 2, 12, 8]));
-        assert_eq!(Ok(150626523450313736), decode_u64(&[2, 23, 34, 6, 104, 2, 12, 8]));
+        assert_eq!(
+            Ok(150626523450313736),
+            decode_u64(&[2, 23, 34, 6, 104, 2, 12, 8])
+        );
     }
 
     #[test]
@@ -1281,7 +1328,6 @@ mod tests {
         assert_eq!(Some(1744964616), frame.get_u64(300).unwrap());
         assert_eq!(Some(150626523450313736), frame.get_u64(400).unwrap());
     }
-
 
     #[test]
     fn can_not_decode_bool_with_zero_bytes() {
