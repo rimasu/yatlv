@@ -446,7 +446,7 @@ impl<'a> FrameParser<'a> {
     /// #     bld.add_data(12, &[4, 5]);
     /// # }
     /// #
-    /// // Assuming frame_data contains a value frame with a single data field (tag=12, value=[4, 5])
+    /// // Assuming frame_data contains a frame with a single data field (tag=12, value=[4, 5])
     /// let parser = FrameParser::new(&frame_data)?;
     /// let expected: &[u8] = &[4, 5];
     /// assert_eq!(Some(expected), parser.get_data(12));
@@ -474,7 +474,7 @@ impl<'a> FrameParser<'a> {
     /// #     bld.add_data(12, &[4, 5]);
     /// # }
     /// #
-    /// // Assuming frame_data contains a value frame with a single data field (tag=12, value=[4, 5])
+    /// // Assuming frame_data contains a frame with a single data field (tag=12, value=[4, 5])
     /// let parser = FrameParser::new(&frame_data)?;
     /// let expected: &[u8] = &[4, 5];
     /// assert_eq!(Some(expected), parser.get_data(12));
@@ -503,7 +503,7 @@ impl<'a> FrameParser<'a> {
     /// #     bld.add_u8(12, 9);
     /// # }
     /// #
-    /// // Assuming frame_data contains a value frame with a single data field (tag=12, value=9)
+    /// // Assuming frame_data contains a frame with a single data field (tag=12, value=9)
     /// let parser = FrameParser::new(&frame_data)?;
     /// assert_eq!(Some(9), parser.get_u8(12)?);
     /// # Ok(()) }
@@ -526,7 +526,7 @@ impl<'a> FrameParser<'a> {
     /// #     bld.add_u16(12, 1024);
     /// # }
     /// #
-    /// // Assuming frame_data contains a value frame with a single data field (tag=12, value=1024)
+    /// // Assuming frame_data contains a frame with a single data field (tag=12, value=1024)
     /// let parser = FrameParser::new(&frame_data)?;
     /// assert_eq!(Some(1024), parser.get_u16(12)?);
     /// # Ok(()) }
@@ -535,6 +535,29 @@ impl<'a> FrameParser<'a> {
         self.decode_value(search_tag, decode_u16)
     }
 
+    /// Read u32 field from frame
+    ///
+    /// Can handle data stored a 1, 2, 4 or 8 bytes, so long as the value
+    /// is small enough to be returned in a `u32`.
+    ///
+    /// ```
+    /// # use yatlv::{FrameParser, FrameBuilder, FrameBuilderLike, Result};
+    /// # fn main() -> Result<()> {
+    /// # let mut frame_data = Vec::new();
+    /// # {
+    /// #     let mut bld = FrameBuilder::new(&mut frame_data);
+    /// #     bld.add_u32(12, 1744964616);
+    /// # }
+    /// #
+    /// // Assuming frame_data contains a frame with a
+    /// // single data field (tag=12, value=1744964616)
+    /// let parser = FrameParser::new(&frame_data)?;
+    /// assert_eq!(Some(1744964616), parser.get_u32(12)?);
+    /// # Ok(()) }
+    ///  ```
+    pub fn get_u32(&self, search_tag: u16) -> Result<Option<u32>> {
+        self.decode_value(search_tag, decode_u32)
+    }
 
     /// Internal decode value that search for a the field-value of a tag and then
     /// attempts to convert it to the required type using the supplied `decoder` function.
@@ -575,6 +598,22 @@ fn decode_u16(value: &[u8]) -> Result<u16> {
         4 => u32::from_be_bytes(value.try_into().unwrap())
             .try_into()
             .map_err(|_| Error::IncompatibleFieldValue),
+
+        8 => u64::from_be_bytes(value.try_into().unwrap())
+            .try_into()
+            .map_err(|_| Error::IncompatibleFieldValue),
+
+        _ => Err(Error::IncompatibleFieldLength(value.len())),
+    }
+}
+
+fn decode_u32(value: &[u8]) -> Result<u32> {
+    match value.len() {
+        1 => Ok(value[0] as u32),
+
+        2 => Ok(u16::from_be_bytes(value.try_into().unwrap()) as u32),
+
+        4 => Ok(u32::from_be_bytes(value.try_into().unwrap())),
 
         8 => u64::from_be_bytes(value.try_into().unwrap())
             .try_into()
@@ -955,5 +994,48 @@ mod tests {
         assert_eq!(Some(1025), frame.get_u16(200).unwrap());
         assert_eq!(Some(1026), frame.get_u16(300).unwrap());
         assert_eq!(Some(1027), frame.get_u16(400).unwrap());
+    }
+
+
+    #[test]
+    fn can_not_decode_u32_with_zero_bytes() {
+        assert_eq!(
+            Some(Error::IncompatibleFieldLength(0)),
+            decode_u32(&[]).err()
+        );
+    }
+
+    #[test]
+    fn can_decode_compatible_values_into_u32() {
+        assert_eq!(Ok(8), decode_u32(&[8]));
+        assert_eq!(Ok(3080), decode_u32(&[12, 8]));
+        assert_eq!(Ok(1744964616), decode_u32(&[104, 2, 12, 8]));
+        assert_eq!(Ok(1744964616), decode_u32(&[0, 0, 0, 0, 104, 2, 12, 8]));
+    }
+
+    #[test]
+    fn can_not_decode_incompatible_values_into_u32() {
+        assert_eq!(
+            Some(Error::IncompatibleFieldValue),
+            decode_u32(&[0, 0, 0, 1, 255, 255, 255, 255]).err()
+        );
+    }
+
+    #[test]
+    fn can_read_u32_from_a_frame() {
+        let mut data = Vec::new();
+        {
+            let mut bld = FrameBuilder::new(&mut data);
+            bld.add_u8(100, 90);
+            bld.add_u16(200, 1025);
+            bld.add_u32(300, 1744964616);
+            bld.add_u64(400, 1744964617);
+        }
+
+        let frame = FrameParser::new(&data).unwrap();
+        assert_eq!(Some(90), frame.get_u32(100).unwrap());
+        assert_eq!(Some(1025), frame.get_u32(200).unwrap());
+        assert_eq!(Some(1744964616), frame.get_u32(300).unwrap());
+        assert_eq!(Some(1744964617), frame.get_u32(400).unwrap());
     }
 }
