@@ -1,10 +1,12 @@
 [package]
 name = "yatlv"
-version = "1.0.0"
+version = "1.0.1"
 authors = ["Richard Sunderland <798934+rimasu@users.noreply.github.com>"]
 edition = "2018"
 license = "MIT/Apache-2.0"
 description = "Yet Another Tag Length Value Format"
 keywords = ["tag-length-value", "parser", "format", "binary", "TLV"]
+documentation = "https://docs.rs/yatlv/"
+homepage = "https://github.com/rimasu/yatlv"
 
 [dependencies]
