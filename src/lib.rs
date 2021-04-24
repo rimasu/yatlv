@@ -64,7 +64,6 @@
 //!
 
 use std::convert::TryInto;
-use std::slice::Iter;
 
 const SIZE_BYTES: usize = 4;
 
@@ -590,6 +589,34 @@ impl<'a> FrameParser<'a> {
         self.decode_value(search_tag, decode_u8)
     }
 
+    /// Read u8 fields from frame
+    ///
+    /// Can handle data stored a 1, 2, 4 or 8 bytes, so long as the value
+    /// is small enough to be returned in a `u8`.
+    ///
+    /// ```
+    /// # use yatlv::{FrameParser, FrameBuilder, FrameBuilderLike, Result};
+    /// # fn main() -> Result<()> {
+    /// # let mut frame_data = Vec::new();
+    /// # {
+    /// #     let mut bld = FrameBuilder::new(&mut frame_data);
+    /// #     bld.add_u8(12, 6);
+    /// #     bld.add_u8(12, 9);
+    /// # }
+    /// #
+    /// // Assuming frame_data contains a frame with a two fields
+    /// // (tag=12, value1=6, value2=9)
+    /// let parser = FrameParser::new(&frame_data)?;
+    /// let expected : Vec<Result<u8>> = vec![Ok(6), Ok(9)];
+    /// let actual: Vec<Result<u8>> = parser.get_u8s(12).collect();
+    /// assert_eq!(expected, actual);
+    /// # Ok(()) }
+    ///  ```
+    pub fn get_u8s<'b>(&'b self, search_tag: u16) -> impl Iterator<Item=Result<u8>> + 'b where 'b: 'a {
+        self.get_datas(search_tag)
+            .map(|v| decode_u8(v))
+    }
+
     /// Read u16 field from frame
     ///
     /// Can handle data stored a 1, 2, 4 or 8 bytes, so long as the value
@@ -612,6 +639,35 @@ impl<'a> FrameParser<'a> {
     pub fn get_u16(&self, search_tag: u16) -> Result<Option<u16>> {
         self.decode_value(search_tag, decode_u16)
     }
+
+    /// Read u16 fields from frame
+    ///
+    /// Can handle data stored a 1, 2, 4 or 8 bytes, so long as the value
+    /// is small enough to be returned in a `u16`.
+    ///
+    /// ```
+    /// # use yatlv::{FrameParser, FrameBuilder, FrameBuilderLike, Result};
+    /// # fn main() -> Result<()> {
+    /// # let mut frame_data = Vec::new();
+    /// # {
+    /// #     let mut bld = FrameBuilder::new(&mut frame_data);
+    /// #     bld.add_u16(12, 1024);
+    /// #     bld.add_u16(12, 1025);
+    /// # }
+    /// #
+    /// // Assuming frame_data contains a frame with a two fields
+    /// // (tag=12, value1=1024, value2=1025)
+    /// let parser = FrameParser::new(&frame_data)?;
+    /// let expected : Vec<Result<u16>> = vec![Ok(1024), Ok(1025)];
+    /// let actual: Vec<Result<u16>> = parser.get_u16s(12).collect();
+    /// assert_eq!(expected, actual);
+    /// # Ok(()) }
+    ///  ```
+    pub fn get_u16s<'b>(&'b self, search_tag: u16) -> impl Iterator<Item=Result<u16>> + 'b where 'b: 'a {
+        self.get_datas(search_tag)
+            .map(|v| decode_u16(v))
+    }
+
 
     /// Read u32 field from frame
     ///
@@ -637,6 +693,34 @@ impl<'a> FrameParser<'a> {
         self.decode_value(search_tag, decode_u32)
     }
 
+    /// Read u32 fields from frame
+    ///
+    /// Can handle data stored a 1, 2, 4 or 8 bytes, so long as the value
+    /// is small enough to be returned in a `u32`.
+    ///
+    /// ```
+    /// # use yatlv::{FrameParser, FrameBuilder, FrameBuilderLike, Result};
+    /// # fn main() -> Result<()> {
+    /// # let mut frame_data = Vec::new();
+    /// # {
+    /// #     let mut bld = FrameBuilder::new(&mut frame_data);
+    /// #     bld.add_u32(12, 1744964616);
+    /// #     bld.add_u32(12, 1744964617);
+    /// # }
+    /// #
+    /// // Assuming frame_data contains a frame with a two fields
+    /// // (tag=12, value1=1744964616, value2=1744964617)
+    /// let parser = FrameParser::new(&frame_data)?;
+    /// let expected : Vec<Result<u32>> = vec![Ok(1744964616), Ok(1744964617)];
+    /// let actual: Vec<Result<u32>> = parser.get_u32s(12).collect();
+    /// assert_eq!(expected, actual);
+    /// # Ok(()) }
+    ///  ```
+    pub fn get_u32s<'b>(&'b self, search_tag: u16) -> impl Iterator<Item=Result<u32>> + 'b where 'b: 'a {
+        self.get_datas(search_tag)
+            .map(|v| decode_u32(v))
+    }
+
     /// Read u64 field from frame
     ///
     /// Can handle data stored a 1, 2, 4 or 8 bytes.
@@ -658,6 +742,33 @@ impl<'a> FrameParser<'a> {
     ///  ```
     pub fn get_u64(&self, search_tag: u16) -> Result<Option<u64>> {
         self.decode_value(search_tag, decode_u64)
+    }
+
+    /// Read u64 fields from frame
+    ///
+    /// Can handle data stored a 1, 2, 4 or 8 bytes.
+    ///
+    /// ```
+    /// # use yatlv::{FrameParser, FrameBuilder, FrameBuilderLike, Result};
+    /// # fn main() -> Result<()> {
+    /// # let mut frame_data = Vec::new();
+    /// # {
+    /// #     let mut bld = FrameBuilder::new(&mut frame_data);
+    /// #     bld.add_u64(12, 150626523450313736);
+    /// #     bld.add_u64(12, 150626523450313737);
+    /// # }
+    /// #
+    /// // Assuming frame_data contains a frame with a two fields
+    /// // (tag=12, value1=150626523450313736, value2=150626523450313737)
+    /// let parser = FrameParser::new(&frame_data)?;
+    /// let expected : Vec<Result<u64>> = vec![Ok(150626523450313736), Ok(150626523450313737)];
+    /// let actual: Vec<Result<u64>> = parser.get_u64s(12).collect();
+    /// assert_eq!(expected, actual);
+    /// # Ok(()) }
+    ///  ```
+    pub fn get_u64s<'b>(&'b self, search_tag: u16) -> impl Iterator<Item=Result<u64>> + 'b where 'b: 'a {
+        self.get_datas(search_tag)
+            .map(|v| decode_u64(v))
     }
 
     /// Read bool field from frame
@@ -1229,6 +1340,27 @@ mod tests {
     }
 
     #[test]
+    fn can_read_u8s_from_a_frame() {
+        let data = &[
+            1, // frame format
+            0, 0, 0, 3, // field count = 3
+            0, 1, // tag = 1
+            0, 0, 0, 1, // field length = 2
+            10, //
+            0, 2, // tag = 2, will be skipped
+            0, 0, 0, 1, // field length = 2
+            20, //
+            0, 1, // tag = 1
+            0, 0, 0, 1, // field length = 2
+            30, //
+        ];
+        let frame = FrameParser::new(data).unwrap();
+        let expected: Vec<Result<u8>> = vec![Ok(10), Ok(30)];
+        let actual: Vec<Result<u8>> = frame.get_u8s(1).collect();
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
     fn can_not_decode_u16_with_zero_bytes() {
         assert_eq!(
             Some(Error::IncompatibleFieldLength(0)),
@@ -1275,6 +1407,27 @@ mod tests {
     }
 
     #[test]
+    fn can_read_u16s_from_a_frame() {
+        let data = &[
+            1, // frame format
+            0, 0, 0, 3, // field count = 3
+            0, 1, // tag = 1
+            0, 0, 0, 1, // field length = 2
+            10, //
+            0, 2, // tag = 2, will be skipped
+            0, 0, 0, 1, // field length = 2
+            20, //
+            0, 1, // tag = 1
+            0, 0, 0, 1, // field length = 2
+            30, //
+        ];
+        let frame = FrameParser::new(data).unwrap();
+        let expected: Vec<Result<u16>> = vec![Ok(10), Ok(30)];
+        let actual: Vec<Result<u16>> = frame.get_u16s(1).collect();
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
     fn can_not_decode_u32_with_zero_bytes() {
         assert_eq!(
             Some(Error::IncompatibleFieldLength(0)),
@@ -1317,6 +1470,27 @@ mod tests {
     }
 
     #[test]
+    fn can_read_u32s_from_a_frame() {
+        let data = &[
+            1, // frame format
+            0, 0, 0, 3, // field count = 3
+            0, 1, // tag = 1
+            0, 0, 0, 1, // field length = 2
+            10, //
+            0, 2, // tag = 2, will be skipped
+            0, 0, 0, 1, // field length = 2
+            20, //
+            0, 1, // tag = 1
+            0, 0, 0, 1, // field length = 2
+            30, //
+        ];
+        let frame = FrameParser::new(data).unwrap();
+        let expected: Vec<Result<u32>> = vec![Ok(10), Ok(30)];
+        let actual: Vec<Result<u32>> = frame.get_u32s(1).collect();
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
     fn can_not_decode_u64_with_zero_bytes() {
         assert_eq!(
             Some(Error::IncompatibleFieldLength(0)),
@@ -1351,6 +1525,28 @@ mod tests {
         assert_eq!(Some(1025), frame.get_u64(200).unwrap());
         assert_eq!(Some(1744964616), frame.get_u64(300).unwrap());
         assert_eq!(Some(150626523450313736), frame.get_u64(400).unwrap());
+    }
+
+
+    #[test]
+    fn can_read_u64s_from_a_frame() {
+        let data = &[
+            1, // frame format
+            0, 0, 0, 3, // field count = 3
+            0, 1, // tag = 1
+            0, 0, 0, 1, // field length = 2
+            10, //
+            0, 2, // tag = 2, will be skipped
+            0, 0, 0, 1, // field length = 2
+            20, //
+            0, 1, // tag = 1
+            0, 0, 0, 1, // field length = 2
+            30, //
+        ];
+        let frame = FrameParser::new(data).unwrap();
+        let expected: Vec<Result<u64>> = vec![Ok(10), Ok(30)];
+        let actual: Vec<Result<u64>> = frame.get_u64s(1).collect();
+        assert_eq!(expected, actual);
     }
 
     #[test]
