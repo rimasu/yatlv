@@ -16,7 +16,8 @@
 //! ```abnf
 //! packet-frame = frame-size frame
 //! frame-size   = unsigned32
-//! frame        = field-count *field
+//! frame        = frame-format field-count *field
+//! frame-format = 0x01
 //! field-count  = unsigned32
 //! field        = field-tag field-length field-value
 //! field-tag    = unsigned16
@@ -28,6 +29,7 @@
 //! ```
 //! Where:
 //!
+//! * frame-format is always 0x01, but alternative formats may be added later
 //! * the number `field`s must match `field-count`
 //! * the length of `field-value` must match `field-length`.
 //! * `unsigned-16` and `unsigned-32` are encoded using big-endian.
@@ -79,10 +81,11 @@ pub trait FrameBuilderLike {
     ///     bld.add_data(tag, data);
     /// }
     /// assert_eq!(&[
+    ///     1,          // frame-format
     ///     0, 0, 0, 1, // field count
-    ///     0, 45,// field-tag
+    ///     0, 45,      // field-tag
     ///     0, 0, 0, 2, // field-length
-    ///     90, 9 // field-value
+    ///     90, 9       // field-value
     /// ], &data[..]);
     /// ```
     fn add_data(&mut self, tag: u16, value: &[u8]);
@@ -101,13 +104,15 @@ pub trait FrameBuilderLike {
     ///     child_bld.add_data(60, data);
     /// }
     /// assert_eq!(&[
-    ///     0, 0, 0, 1, // field count
-    ///     0, 45,// field-tag
-    ///     0, 0, 0, 12, // field-length
-    ///     0, 0, 0, 1, // child field count
-    ///     0, 60, // child field-tag2
-    ///     0, 0, 0, 2, // child field-length
-    ///     90, 9 // child field-value
+    ///     1,           // frame-format
+    ///     0, 0, 0, 1,  // field count
+    ///     0, 45,       // field-tag
+    ///     0, 0, 0, 13, // field-length
+    ///     1,           // child frame format
+    ///     0, 0, 0, 1,  // child field count
+    ///     0, 60,       // child field-tag2
+    ///     0, 0, 0, 2,  // child field-length
+    ///     90, 9        // child field-value
     /// ], &data[..]);
     /// ```
     fn add_child(&mut self, tag: u16) -> PacketFrameBuilder;
@@ -122,13 +127,14 @@ pub trait FrameBuilderLike {
     ///     bld.add_bool(1021, false);
     /// }
     /// assert_eq!(&[
+    ///     1,          // frame-format
     ///     0, 0, 0, 2, // field count = 1
-    ///     3, 254, // tag = 1022
-    ///     0, 0, 0, 1,  // field length = 2
-    ///     255,  // field value
-    ///     3, 253, // tag = 1021
-    ///     0, 0, 0, 1,  // field length = 2
-    ///     0  // field value
+    ///     3, 254,     // tag = 1022
+    ///     0, 0, 0, 1, // field length = 2
+    ///     255,        // field value
+    ///     3, 253,     // tag = 1021
+    ///     0, 0, 0, 1, // field length = 2
+    ///     0           // field value
     /// ], &data[..]);
     /// ```
     fn add_bool(&mut self, tag: u16, value: bool) {
@@ -147,10 +153,11 @@ pub trait FrameBuilderLike {
     ///     bld.add_u8(tag, data);
     /// }
     /// assert_eq!(&[
+    ///     1,          // frame-format
     ///     0, 0, 0, 1, // field count
-    ///     0, 45,// field-tag
+    ///     0, 45,      // field-tag
     ///     0, 0, 0, 1, // field-length
-    ///     7 // field-value
+    ///     7           // field-value
     /// ], &data[..]);
     /// ```
     fn add_u8(&mut self, tag: u16, value: u8) {
@@ -172,10 +179,11 @@ pub trait FrameBuilderLike {
     ///     bld.add_u16(tag, data);
     /// }
     /// assert_eq!(&[
+    ///     1,          // frame-format
     ///     0, 0, 0, 1, // field count
-    ///     0, 45,// field-tag
+    ///     0, 45,      // field-tag
     ///     0, 0, 0, 2, // field-length
-    ///     0, 7 // field-value
+    ///     0, 7        // field-value
     /// ], &data[..]);
     /// ```
     fn add_u16(&mut self, tag: u16, value: u16) {
@@ -194,10 +202,11 @@ pub trait FrameBuilderLike {
     ///     bld.add_u32(tag, data);
     /// }
     /// assert_eq!(&[
+    ///     1,          // frame-format
     ///     0, 0, 0, 1, // field count
-    ///     0, 45,// field-tag
+    ///     0, 45,      // field-tag
     ///     0, 0, 0, 4, // field-length
-    ///     0, 0, 0, 7 // field-value
+    ///     0, 0, 0, 7  // field-value
     /// ], &data[..]);
     /// ```
     fn add_u32(&mut self, tag: u16, value: u32) {
@@ -216,9 +225,10 @@ pub trait FrameBuilderLike {
     ///     bld.add_u64(tag, data);
     /// }
     /// assert_eq!(&[
-    ///     0, 0, 0, 1, // field count
-    ///     0, 45,// field-tag
-    ///     0, 0, 0, 8, // field-length
+    ///     1,                     // frame-format
+    ///     0, 0, 0, 1,            // field count
+    ///     0, 45,                 // field-tag
+    ///     0, 0, 0, 8,            // field-length
     ///     0, 0, 0, 0, 0, 0, 0, 7 // field-value
     /// ], &data[..]);
     /// ```
@@ -238,9 +248,10 @@ pub trait FrameBuilderLike {
     ///     bld.add_utf8(tag, data);
     /// }
     /// assert_eq!(&[
-    ///     0, 0, 0, 1, // field count
-    ///     0, 45,// field-tag
-    ///     0, 0, 0, 5, // field-length
+    ///     1,                      // frame-format
+    ///     0, 0, 0, 1,             // field count
+    ///     0, 45,                  // field-tag
+    ///     0, 0, 0, 5,             // field-length
     ///     104, 101, 108, 108, 111 // field-value
     /// ], &data[..]);
     /// ```
@@ -262,8 +273,10 @@ pub trait FrameBuilderLike {
 /// {
 ///     FrameBuilder::new(&mut data);
 /// }
-/// // first 4 bytes indicate the frame has zero fields.
-/// assert_eq!(&[0, 0, 0, 0], &data[..]);
+/// assert_eq!(&[
+///     1,         // frame-format
+///     0, 0, 0, 0 // field-count
+/// ], &data[..]);
 /// ```
 pub struct FrameBuilder<'a> {
     field_count: u32,
@@ -273,7 +286,8 @@ pub struct FrameBuilder<'a> {
 
 impl<'a> Drop for FrameBuilder<'a> {
     fn drop(&mut self) {
-        self.data[self.field_start..self.field_start + SIZE_BYTES]
+        let field_count_pos = self.field_start + 1;
+        self.data[field_count_pos..field_count_pos + SIZE_BYTES]
             .copy_from_slice(&self.field_count.to_be_bytes())
     }
 }
@@ -281,7 +295,7 @@ impl<'a> Drop for FrameBuilder<'a> {
 impl<'a> FrameBuilder<'a> {
     pub fn new(data: &mut Vec<u8>) -> FrameBuilder {
         let field_start = data.len();
-        data.extend_from_slice(&[0, 0, 0, 0]);
+        data.extend_from_slice(&[1, 0, 0, 0, 0]);
 
         FrameBuilder {
             field_count: 0,
@@ -318,9 +332,11 @@ impl<'a> FrameBuilderLike for FrameBuilder<'a> {
 /// {
 ///     PacketFrameBuilder::new(&mut data);
 /// }
-/// // first 4 bytes indicate the frame is 4 bytes long
-/// // second 4 bytes indicate that the frame has zero fields.
-/// assert_eq!(&[0, 0, 0, 4, 0, 0, 0, 0], &data[..]);
+/// assert_eq!(&[
+///     0, 0, 0, 5, // packet-size
+///     1,  // frame-format
+///     0, 0, 0, 0 // field-count
+/// ], &data[..]);
 /// ```
 pub struct PacketFrameBuilder<'a> {
     field_count: u32,
@@ -331,9 +347,12 @@ pub struct PacketFrameBuilder<'a> {
 impl<'a> Drop for PacketFrameBuilder<'a> {
     fn drop(&mut self) {
         let packet_length = (self.data.len() - self.packet_start - SIZE_BYTES) as u32;
+
         self.data[self.packet_start..self.packet_start + SIZE_BYTES]
             .copy_from_slice(&packet_length.to_be_bytes());
-        self.data[self.packet_start + SIZE_BYTES..self.packet_start + SIZE_BYTES + SIZE_BYTES]
+
+        let field_count_pos = self.packet_start + 5;
+        self.data[field_count_pos..field_count_pos + SIZE_BYTES]
             .copy_from_slice(&self.field_count.to_be_bytes())
     }
 }
@@ -341,7 +360,7 @@ impl<'a> Drop for PacketFrameBuilder<'a> {
 impl<'a> PacketFrameBuilder<'a> {
     pub fn new(data: &mut Vec<u8>) -> PacketFrameBuilder {
         let packet_start = data.len();
-        data.extend_from_slice(&[0, 0, 0, 0, 0, 0, 0, 0]);
+        data.extend_from_slice(&[0, 0, 0, 0, 1, 0, 0, 0, 0]);
 
         PacketFrameBuilder {
             field_count: 0,
@@ -372,7 +391,13 @@ impl<'a> FrameBuilderLike for PacketFrameBuilder<'a> {
 /// Library Error Type
 #[derive(Debug, Eq, PartialEq)]
 pub enum Error {
-    /// The frame must start with four bytes that indicate the number fields
+    /// The frame must start with a single format byte.
+    IncompleteFrameFormat,
+
+    /// The frame format must be one of the recognized formats (currently only, `0x01`).
+    InvalidFrameFormat(u32),
+
+    /// The frame must have a four byte field-count that indicates the number fields
     /// in the frame (encoded as big-endian u32)
     IncompleteFrameFieldCount,
 
@@ -404,6 +429,24 @@ struct FrameParserField<'a> {
 /// FrameParser can be used to access field encoded as a frame.
 pub struct FrameParser<'a> {
     fields: Vec<FrameParserField<'a>>,
+}
+
+enum FrameFormat {
+    Format1
+}
+
+fn read_frame_format(data: &[u8]) -> Result<(FrameFormat, &[u8])> {
+    if data.len() >= 1 {
+        let (field_count_bytes, tail) = data.split_at(1);
+        let raw_format = field_count_bytes[0];
+        let format = match raw_format {
+            0x01 => Ok(FrameFormat::Format1),
+            _ => Err(Error::InvalidFrameFormat(raw_format as u32))
+        }?;
+        Ok((format, tail))
+    } else {
+        Err(Error::IncompleteFrameFormat)
+    }
 }
 
 fn read_frame_field_count(data: &[u8]) -> Result<(u32, &[u8])> {
@@ -453,7 +496,8 @@ impl<'a> FrameParser<'a> {
     /// # Ok(()) }
     ///  ```
     pub fn new(frame_data: &[u8]) -> Result<FrameParser> {
-        let (field_count, mut body) = read_frame_field_count(frame_data)?;
+        let (_, body) = read_frame_format(frame_data)?;
+        let (field_count, mut body) = read_frame_field_count(body)?;
         let mut fields = Vec::with_capacity(field_count as usize);
         for _ in 0..field_count {
             let (tag, length, tail) = read_field_tag_and_length(body)?;
@@ -613,7 +657,6 @@ impl<'a> FrameParser<'a> {
     }
 
 
-
     /// Read utf8 field from frame
     ///
     ///
@@ -717,7 +760,7 @@ fn decode_u64(value: &[u8]) -> Result<u64> {
 
 fn decode_bool(value: &[u8]) -> Result<bool> {
     if value.len() != 1 {
-        return Err(Error::IncompatibleFieldLength(value.len()))
+        return Err(Error::IncompatibleFieldLength(value.len()));
     }
     match value[0] {
         0x00 => Ok(false),
@@ -741,7 +784,7 @@ mod tests {
         {
             FrameBuilder::new(&mut data);
         }
-        assert_eq!(&[0, 0, 0, 0], &data[..]);
+        assert_eq!(&[1, 0, 0, 0, 0], &data[..]);
     }
 
     #[test]
@@ -750,7 +793,7 @@ mod tests {
         {
             PacketFrameBuilder::new(&mut data);
         }
-        assert_eq!(&[0, 0, 0, 4, 0, 0, 0, 0], &data[..]);
+        assert_eq!(&[0, 0, 0, 5, 1, 0, 0, 0, 0], &data[..]);
     }
 
     #[test]
@@ -762,6 +805,7 @@ mod tests {
         }
         assert_eq!(
             &[
+                1, // frame format
                 0, 0, 0, 1, // field count = 1
                 3, 254, // tag = 1022
                 0, 0, 0, 2, // field length = 2
@@ -780,7 +824,8 @@ mod tests {
         }
         assert_eq!(
             &[
-                0, 0, 0, 12, // frame size = 12
+                0, 0, 0, 13, // frame size = 13
+                1, // frame format
                 0, 0, 0, 1, // field count = 1
                 3, 254, // tag = 1022
                 0, 0, 0, 2, // field length = 2
@@ -800,9 +845,11 @@ mod tests {
         }
         assert_eq!(
             &[
+                1, // frame format
                 0, 0, 0, 1, // field count = 1
                 3, 254, // tag = 1022
-                0, 0, 0, 12, // child frame size
+                0, 0, 0, 13, // child frame size
+                1, // child frame format
                 0, 0, 0, 1, // child frame field count
                 0, 60, // field-tag in child frame
                 0, 0, 0, 2, // field-length in child frame
@@ -822,10 +869,12 @@ mod tests {
         }
         assert_eq!(
             &[
-                0, 0, 0, 22, // packet size
+                0, 0, 0, 24, // packet size
+                1, // frame format
                 0, 0, 0, 1, // field count = 1
                 3, 254, // tag = 1022
-                0, 0, 0, 12, // child frame size
+                0, 0, 0, 13, // child frame size
+                1, // child frame format
                 0, 0, 0, 1, // child frame field count
                 0, 60, // field-tag in child frame
                 0, 0, 0, 2, // field-length in child frame
@@ -845,6 +894,7 @@ mod tests {
         }
         assert_eq!(
             &[
+                1, // frame format
                 0, 0, 0, 2, // field count = 1
                 3, 254, // tag = 1022
                 0, 0, 0, 1,   // field length = 2
@@ -866,6 +916,7 @@ mod tests {
         }
         assert_eq!(
             &[
+                1, // frame format
                 0, 0, 0, 1, // field count = 1
                 3, 254, // tag = 1022
                 0, 0, 0, 1,  // field length = 2
@@ -884,6 +935,7 @@ mod tests {
         }
         assert_eq!(
             &[
+                1, // frame format
                 0, 0, 0, 1, // field count = 1
                 3, 254, // tag = 1022
                 0, 0, 0, 2, // field length = 2
@@ -902,6 +954,7 @@ mod tests {
         }
         assert_eq!(
             &[
+                1, // frame format
                 0, 0, 0, 1, // field count = 1
                 3, 254, // tag = 1022
                 0, 0, 0, 4, // field length = 2
@@ -920,6 +973,7 @@ mod tests {
         }
         assert_eq!(
             &[
+                1, // frame format
                 0, 0, 0, 1, // field count = 1
                 3, 254, // tag = 1022
                 0, 0, 0, 8, // field length = 2
@@ -938,6 +992,7 @@ mod tests {
         }
         assert_eq!(
             &[
+                1, // frame format
                 0, 0, 0, 1, // field count = 1
                 3, 254, // tag = 1022
                 0, 0, 0, 5, // field length = 2
@@ -948,8 +1003,26 @@ mod tests {
     }
 
     #[test]
+    fn can_not_parse_a_frame_if_there_is_not_enough_data_for_frame_format() {
+        let data = &[]; // need four bytes for a field count.
+        assert_eq!(
+            Some(Error::IncompleteFrameFormat),
+            FrameParser::new(data).err()
+        );
+    }
+
+    #[test]
+    fn can_not_parse_a_frame_if_frame_format_is_not_recognized() {
+        let data = &[8]; // need four bytes for a field count.
+        assert_eq!(
+            Some(Error::InvalidFrameFormat(8)),
+            FrameParser::new(data).err()
+        );
+    }
+
+    #[test]
     fn can_not_parse_a_frame_if_there_is_not_enough_data_for_field_count() {
-        let data = &[0, 0, 0]; // need four bytes for a field count.
+        let data = &[1, 0, 0, 0]; // need four bytes for a field count.
         assert_eq!(
             Some(Error::IncompleteFrameFieldCount),
             FrameParser::new(data).err()
@@ -959,6 +1032,7 @@ mod tests {
     #[test]
     fn can_not_parse_a_frame_if_there_is_not_enough_data_for_field_tag_and_length() {
         let data = &[
+            1, // frame format
             0, 0, 0, 1, // field count = 1
             0, 1, // tag = 1
             0, 0, 0, // incomplete field length
@@ -972,6 +1046,7 @@ mod tests {
     #[test]
     fn can_not_parse_a_frame_if_there_is_not_enough_data_for_a_field_value() {
         let data = &[
+            1, // frame format
             0, 0, 0, 1, // field count = 1
             0, 1, // tag = 1
             0, 0, 0, 4, // field length = 4
@@ -986,6 +1061,7 @@ mod tests {
     #[test]
     fn can_read_data_from_frame() {
         let data = &[
+            1, // frame format
             0, 0, 0, 1, // field count = 1
             0, 1, // tag = 1
             0, 0, 0, 4, // field length = 4
@@ -998,6 +1074,7 @@ mod tests {
     #[test]
     fn can_attempt_to_read_data_from_a_frame_if_it_is_not_there() {
         let data = &[
+            1, // frame format
             0, 0, 0, 1, // field count = 1
             0, 1, // tag = 1
             0, 0, 0, 4, // field length = 4
@@ -1225,7 +1302,6 @@ mod tests {
         {
             let mut bld = FrameBuilder::new(&mut data);
             bld.add_utf8(100, test_str);
-
         }
 
         let frame = FrameParser::new(&data).unwrap();
