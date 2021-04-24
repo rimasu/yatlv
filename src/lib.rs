@@ -582,6 +582,27 @@ impl<'a> FrameParser<'a> {
         self.decode_value(search_tag, decode_u64)
     }
 
+    /// Read bool field from frame
+    ///
+    /// ```
+    /// # use yatlv::{FrameParser, FrameBuilder, FrameBuilderLike, Result};
+    /// # fn main() -> Result<()> {
+    /// # let mut frame_data = Vec::new();
+    /// # {
+    /// #     let mut bld = FrameBuilder::new(&mut frame_data);
+    /// #     bld.add_bool(12, true);
+    /// # }
+    /// #
+    /// // Assuming frame_data contains a frame with a
+    /// // single data field (tag=12, value=true)
+    /// let parser = FrameParser::new(&frame_data)?;
+    /// assert_eq!(Some(true), parser.get_bool(12)?);
+    /// # Ok(()) }
+    ///  ```
+    pub fn get_bool(&self, search_tag: u16) -> Result<Option<bool>> {
+        self.decode_value(search_tag, decode_bool)
+    }
+
     /// Attempt to find field-value of field that has the search_tag and then
     /// attempts to convert it to the required type using the supplied `decoder` function.
     fn decode_value<T, F>(&self, search_tag: u16, decoder: F) -> Result<Option<T>>
@@ -691,6 +712,17 @@ fn decode_u64(value: &[u8]) -> Result<u64> {
         8 => Ok(u64::from_be_bytes(value.try_into().unwrap())),
 
         _ => Err(Error::IncompatibleFieldLength(value.len())),
+    }
+}
+
+fn decode_bool(value: &[u8]) -> Result<bool> {
+    if value.len() != 1 {
+        return Err(Error::IncompatibleFieldLength(value.len()))
+    }
+    match value[0] {
+        0x00 => Ok(false),
+        0xFF => Ok(true),
+        _ => Err(Error::IncompatibleFieldValue)
     }
 }
 
@@ -1114,7 +1146,6 @@ mod tests {
         assert_eq!(Some(1744964617), frame.get_u32(400).unwrap());
     }
 
-
     #[test]
     fn can_not_decode_u64_with_zero_bytes() {
         assert_eq!(
@@ -1149,6 +1180,42 @@ mod tests {
         assert_eq!(Some(150626523450313736), frame.get_u64(400).unwrap());
     }
 
+
+    #[test]
+    fn can_not_decode_bool_with_zero_bytes() {
+        assert_eq!(
+            Some(Error::IncompatibleFieldLength(0)),
+            decode_bool(&[]).err()
+        );
+    }
+
+    #[test]
+    fn can_decode_compatible_values_into_bool() {
+        assert_eq!(Ok(false), decode_bool(&[0x00]));
+        assert_eq!(Ok(true), decode_bool(&[0xFF]));
+    }
+
+    #[test]
+    fn can_not_decode_incompatible_values_into_bool() {
+        assert_eq!(
+            Some(Error::IncompatibleFieldValue),
+            decode_bool(&[0x01]).err()
+        );
+    }
+
+    #[test]
+    fn can_read_bool_from_a_frame() {
+        let mut data = Vec::new();
+        {
+            let mut bld = FrameBuilder::new(&mut data);
+            bld.add_bool(100, true);
+            bld.add_bool(200, false);
+        }
+
+        let frame = FrameParser::new(&data).unwrap();
+        assert_eq!(Some(true), frame.get_bool(100).unwrap());
+        assert_eq!(Some(false), frame.get_bool(200).unwrap());
+    }
 
     #[test]
     fn can_read_str_from_a_frame() {
