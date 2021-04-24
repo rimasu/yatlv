@@ -1,5 +1,7 @@
 [![Rust](https://github.com/rimasu/yatlv/actions/workflows/rust.yml/badge.svg)](https://github.com/rimasu/yatlv/actions/workflows/rust.yml)
 
+[![Docs](https://docs.rs/yatlv/badge.svg)](https://docs.rs/yatlv)
+
 Yet Another Tag Length Value (YATLV) format.
 
 Tag-length-value formats are a common way to exchange structured data in a compact and
@@ -70,6 +72,6 @@ to properly maintain this.  You are welcome to use
 and fork at your risk, but I would not recommend this
 crate for any serious work.
 
-Current version: 1.0.0
+Current version: 1.0.1
 
 License: MIT/Apache-2.0
