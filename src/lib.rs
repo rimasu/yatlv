@@ -64,6 +64,7 @@
 //!
 
 use std::convert::TryInto;
+
 const SIZE_BYTES: usize = 4;
 
 /// FrameBuilderLike defines the methods common to [FrameBuilder] and [PacketFrameBuilder].
@@ -255,8 +256,8 @@ pub trait FrameBuilderLike {
     /// ], &data[..]);
     /// ```
     fn add_str<S>(&mut self, tag: u16, value: S)
-        where
-            S: AsRef<str>,
+    where
+        S: AsRef<str>,
     {
         self.add_data(tag, &value.as_ref().as_bytes())
     }
@@ -439,7 +440,7 @@ enum FrameFormat {
 }
 
 fn read_frame_format(data: &[u8]) -> Result<(FrameFormat, &[u8])> {
-    if data.len() >= 1 {
+    if !data.is_empty() {
         let (field_count_bytes, tail) = data.split_at(1);
         let raw_format = field_count_bytes[0];
         let format = match raw_format {
@@ -559,8 +560,12 @@ impl<'a> FrameParser<'a> {
     /// assert_eq!(expected, actual);
     /// # Ok(()) }
     ///  ```
-    pub fn get_datas<'b>(&'b self, search_tag: u16) -> impl Iterator<Item=&'a [u8]> where 'b : 'a {
-        self.fields.iter()
+    pub fn get_datas<'b>(&'b self, search_tag: u16) -> impl Iterator<Item = &'a [u8]>
+    where
+        'b: 'a,
+    {
+        self.fields
+            .iter()
             .filter(move |f| f.tag == search_tag)
             .map(|f| f.value)
     }
@@ -611,9 +616,11 @@ impl<'a> FrameParser<'a> {
     /// assert_eq!(expected, actual);
     /// # Ok(()) }
     ///  ```
-    pub fn get_u8s<'b>(&'b self, search_tag: u16) -> impl Iterator<Item=Result<u8>> + 'b where 'b: 'a {
-        self.get_datas(search_tag)
-            .map(|v| decode_u8(v))
+    pub fn get_u8s<'b>(&'b self, search_tag: u16) -> impl Iterator<Item = Result<u8>> + 'b
+    where
+        'b: 'a,
+    {
+        self.get_datas(search_tag).map(|v| decode_u8(v))
     }
 
     /// Read u16 field from frame
@@ -662,11 +669,12 @@ impl<'a> FrameParser<'a> {
     /// assert_eq!(expected, actual);
     /// # Ok(()) }
     ///  ```
-    pub fn get_u16s<'b>(&'b self, search_tag: u16) -> impl Iterator<Item=Result<u16>> + 'b where 'b: 'a {
-        self.get_datas(search_tag)
-            .map(|v| decode_u16(v))
+    pub fn get_u16s<'b>(&'b self, search_tag: u16) -> impl Iterator<Item = Result<u16>> + 'b
+    where
+        'b: 'a,
+    {
+        self.get_datas(search_tag).map(|v| decode_u16(v))
     }
-
 
     /// Read u32 field from frame
     ///
@@ -715,9 +723,11 @@ impl<'a> FrameParser<'a> {
     /// assert_eq!(expected, actual);
     /// # Ok(()) }
     ///  ```
-    pub fn get_u32s<'b>(&'b self, search_tag: u16) -> impl Iterator<Item=Result<u32>> + 'b where 'b: 'a {
-        self.get_datas(search_tag)
-            .map(|v| decode_u32(v))
+    pub fn get_u32s<'b>(&'b self, search_tag: u16) -> impl Iterator<Item = Result<u32>> + 'b
+    where
+        'b: 'a,
+    {
+        self.get_datas(search_tag).map(|v| decode_u32(v))
     }
 
     /// Read u64 field from frame
@@ -765,9 +775,11 @@ impl<'a> FrameParser<'a> {
     /// assert_eq!(expected, actual);
     /// # Ok(()) }
     ///  ```
-    pub fn get_u64s<'b>(&'b self, search_tag: u16) -> impl Iterator<Item=Result<u64>> + 'b where 'b: 'a {
-        self.get_datas(search_tag)
-            .map(|v| decode_u64(v))
+    pub fn get_u64s<'b>(&'b self, search_tag: u16) -> impl Iterator<Item = Result<u64>> + 'b
+    where
+        'b: 'a,
+    {
+        self.get_datas(search_tag).map(|v| decode_u64(v))
     }
 
     /// Read bool field from frame
@@ -811,16 +823,18 @@ impl<'a> FrameParser<'a> {
     /// assert_eq!(expected, actual);
     /// # Ok(()) }
     ///  ```
-    pub fn get_bools<'b>(&'b self, search_tag: u16) -> impl Iterator<Item=Result<bool>> + 'b where 'b: 'a {
-        self.get_datas(search_tag)
-            .map(|v| decode_bool(v))
+    pub fn get_bools<'b>(&'b self, search_tag: u16) -> impl Iterator<Item = Result<bool>> + 'b
+    where
+        'b: 'a,
+    {
+        self.get_datas(search_tag).map(|v| decode_bool(v))
     }
 
     /// Attempt to find field-value of field that has the search_tag and then
     /// attempts to convert it to the required type using the supplied `decoder` function.
     fn decode_value<T, F>(&self, search_tag: u16, decoder: F) -> Result<Option<T>>
-        where
-            F: FnOnce(&[u8]) -> Result<T>,
+    where
+        F: FnOnce(&[u8]) -> Result<T>,
     {
         self.get_data(search_tag).map(|v| decoder(v)).transpose()
     }
@@ -846,7 +860,6 @@ impl<'a> FrameParser<'a> {
         self.decode_ref(search_tag, decode_str)
     }
 
-
     /// Read str fields from frame
     ///
     /// ```
@@ -867,17 +880,19 @@ impl<'a> FrameParser<'a> {
     /// assert_eq!(expected, actual);
     /// # Ok(()) }
     ///  ```
-    pub fn get_strs<'b>(&'b self, search_tag: u16) -> impl Iterator<Item=Result<&'a str>> + 'b where 'b: 'a {
-        self.get_datas(search_tag)
-            .map(|v| decode_str(v))
+    pub fn get_strs<'b>(&'b self, search_tag: u16) -> impl Iterator<Item = Result<&'a str>> + 'b
+    where
+        'b: 'a,
+    {
+        self.get_datas(search_tag).map(|v| decode_str(v))
     }
 
     /// Attempt to find field-value of field that has the search_tag and then
     /// attempts to convert it to the required type using the supplied `decoder` function.
     fn decode_ref<T, F>(&self, search_tag: u16, decoder: F) -> Result<Option<&T>>
-        where
-            F: FnOnce(&[u8]) -> Result<&T>,
-            T: ?Sized,
+    where
+        F: FnOnce(&[u8]) -> Result<&T>,
+        T: ?Sized,
     {
         self.get_data(search_tag).map(|v| decoder(v)).transpose()
     }
@@ -898,14 +913,47 @@ impl<'a> FrameParser<'a> {
     /// // child frame (tag=12) which contains a single
     /// // value (tag=13, value=2)
     /// let parser = FrameParser::new(&frame_data)?;
-    /// let child_parser = parser.get_child(12)?.unwrap();
+    /// let child_parser = parser.get_frame(12)?.unwrap();
     /// assert_eq!(Some(2), child_parser.get_u8(13)?);
     /// # Ok(()) }
     ///  ```
-    pub fn get_child(&self, search_tag: u16) -> Result<Option<FrameParser>> {
+    pub fn get_frame(&self, search_tag: u16) -> Result<Option<FrameParser>> {
         self.get_data(search_tag)
             .map(|v| FrameParser::new(v))
             .transpose()
+    }
+
+    /// Read child frames from a frame.
+    /// ```
+    /// # use yatlv::{FrameParser, FrameBuilder, FrameBuilderLike, Result};
+    /// # fn main() -> Result<()> {
+    /// # let mut frame_data = Vec::new();
+    /// # {
+    /// #     let mut bld = FrameBuilder::new(&mut frame_data);
+    /// #     for _ in 0..2 {
+    /// #         let mut child = bld.add_child(12);
+    /// #         child.add_u8(13, 2)
+    /// #     }
+    /// # }
+    /// #
+    /// // Assuming frame_data contains a frame with two
+    /// // child frame (tag=12) which each contains a single
+    /// // value (tag=13, value=2)
+    /// let parser = FrameParser::new(&frame_data)?;
+    /// let children: Vec<FrameParser> = parser.get_frames(12).map(|v| v.unwrap()).collect();
+    /// assert_eq!(2, children.len());
+    /// assert_eq!(Some(2), children[0].get_u8(13)?);
+    /// assert_eq!(Some(2), children[1].get_u8(13)?);
+    /// # Ok(()) }
+    ///  ```
+    pub fn get_frames<'b>(
+        &'b self,
+        search_tag: u16,
+    ) -> impl Iterator<Item = Result<FrameParser<'a>>> + 'b
+    where
+        'b: 'a,
+    {
+        self.get_datas(search_tag).map(|v| FrameParser::new(v))
     }
 }
 
@@ -1286,10 +1334,7 @@ mod tests {
             1, 2, 3, 4, // incomplete value
             5, // excess data
         ];
-        assert_eq!(
-            Some(Error::UnexpectedData),
-            FrameParser::new(data).err()
-        );
+        assert_eq!(Some(Error::UnexpectedData), FrameParser::new(data).err());
     }
 
     #[test]
@@ -1395,13 +1440,13 @@ mod tests {
             1, // frame format
             0, 0, 0, 3, // field count = 3
             0, 1, // tag = 1
-            0, 0, 0, 1, // field length = 2
+            0, 0, 0, 1,  // field length = 2
             10, //
             0, 2, // tag = 2, will be skipped
-            0, 0, 0, 1, // field length = 2
+            0, 0, 0, 1,  // field length = 2
             20, //
             0, 1, // tag = 1
-            0, 0, 0, 1, // field length = 2
+            0, 0, 0, 1,  // field length = 2
             30, //
         ];
         let frame = FrameParser::new(data).unwrap();
@@ -1462,13 +1507,13 @@ mod tests {
             1, // frame format
             0, 0, 0, 3, // field count = 3
             0, 1, // tag = 1
-            0, 0, 0, 1, // field length = 2
+            0, 0, 0, 1,  // field length = 2
             10, //
             0, 2, // tag = 2, will be skipped
-            0, 0, 0, 1, // field length = 2
+            0, 0, 0, 1,  // field length = 2
             20, //
             0, 1, // tag = 1
-            0, 0, 0, 1, // field length = 2
+            0, 0, 0, 1,  // field length = 2
             30, //
         ];
         let frame = FrameParser::new(data).unwrap();
@@ -1525,13 +1570,13 @@ mod tests {
             1, // frame format
             0, 0, 0, 3, // field count = 3
             0, 1, // tag = 1
-            0, 0, 0, 1, // field length = 2
+            0, 0, 0, 1,  // field length = 2
             10, //
             0, 2, // tag = 2, will be skipped
-            0, 0, 0, 1, // field length = 2
+            0, 0, 0, 1,  // field length = 2
             20, //
             0, 1, // tag = 1
-            0, 0, 0, 1, // field length = 2
+            0, 0, 0, 1,  // field length = 2
             30, //
         ];
         let frame = FrameParser::new(data).unwrap();
@@ -1577,20 +1622,19 @@ mod tests {
         assert_eq!(Some(150626523450313736), frame.get_u64(400).unwrap());
     }
 
-
     #[test]
     fn can_read_u64s_from_a_frame() {
         let data = &[
             1, // frame format
             0, 0, 0, 3, // field count = 3
             0, 1, // tag = 1
-            0, 0, 0, 1, // field length = 2
+            0, 0, 0, 1,  // field length = 2
             10, //
             0, 2, // tag = 2, will be skipped
-            0, 0, 0, 1, // field length = 2
+            0, 0, 0, 1,  // field length = 2
             20, //
             0, 1, // tag = 1
-            0, 0, 0, 1, // field length = 2
+            0, 0, 0, 1,  // field length = 2
             30, //
         ];
         let frame = FrameParser::new(data).unwrap();
@@ -1690,7 +1734,28 @@ mod tests {
         }
 
         let frame = FrameParser::new(&data).unwrap();
-        let child_frame = frame.get_child(200).unwrap().unwrap();
+        let child_frame = frame.get_frame(200).unwrap().unwrap();
         assert_eq!(Some(3), child_frame.get_u8(300).unwrap());
+    }
+
+    #[test]
+    fn can_read_child_frames() {
+        let mut data = Vec::new();
+        {
+            let mut bld = FrameBuilder::new(&mut data);
+            bld.add_u8(100, 1);
+            for i in 0..2 {
+                let mut bld2 = bld.add_child(200);
+                bld2.add_u8(300, i);
+            }
+        }
+
+        let frame = FrameParser::new(&data).unwrap();
+        let child_frame: Vec<FrameParser> = frame.get_frames(200)
+            .map(|v| v.unwrap())
+            .collect();
+
+        assert_eq!(Some(0), child_frame[0].get_u8(300).unwrap());
+        assert_eq!(Some(1), child_frame[1].get_u8(300).unwrap());
     }
 }
