@@ -64,6 +64,7 @@
 //!
 
 use std::convert::TryInto;
+use std::slice::Iter;
 
 const SIZE_BYTES: usize = 4;
 
@@ -416,6 +417,10 @@ pub enum Error {
     /// When converting a field into an expected type the value of the field
     /// must be compatible with the expected type.
     IncompatibleFieldValue,
+
+    /// Once all the fields have been read there should be no more data in the
+    /// frame.
+    UnexpectedData,
 }
 
 /// Library Result Type
@@ -505,7 +510,11 @@ impl<'a> FrameParser<'a> {
             fields.push(FrameParserField { tag, value });
             body = tail
         }
-        Ok(FrameParser { fields })
+        if body.is_empty() {
+            Ok(FrameParser { fields })
+        } else {
+            Err(Error::UnexpectedData)
+        }
     }
 
     /// Read field from frame.
@@ -524,7 +533,7 @@ impl<'a> FrameParser<'a> {
     /// assert_eq!(Some(expected), parser.get_data(12));
     /// # Ok(()) }
     ///  ```
-    pub fn get_data(&self, search_tag: u16) -> Option<&[u8]> {
+    pub fn get_data(&self, search_tag: u16) -> Option<&'a [u8]> {
         for field in &self.fields {
             if field.tag == search_tag {
                 return Some(field.value);
@@ -552,9 +561,8 @@ impl<'a> FrameParser<'a> {
     /// assert_eq!(expected, actual);
     /// # Ok(()) }
     ///  ```
-    pub fn get_datas(&self, search_tag: u16) -> impl Iterator<Item=&[u8]> {
-        self.fields
-            .iter()
+    pub fn get_datas<'b>(&'b self, search_tag: u16) -> impl Iterator<Item=&'a [u8]> where 'b : 'a {
+        self.fields.iter()
             .filter(move |f| f.tag == search_tag)
             .map(|f| f.value)
     }
@@ -1103,6 +1111,22 @@ mod tests {
         ];
         assert_eq!(
             Some(Error::IncompleteFieldValue(4, 3)),
+            FrameParser::new(data).err()
+        );
+    }
+
+    #[test]
+    fn can_not_parse_a_frame_if_there_is_excess_data() {
+        let data = &[
+            1, // frame format
+            0, 0, 0, 1, // field count = 1
+            0, 1, // tag = 1
+            0, 0, 0, 4, // field length = 4
+            1, 2, 3, 4, // incomplete value
+            5, // excess data
+        ];
+        assert_eq!(
+            Some(Error::UnexpectedData),
             FrameParser::new(data).err()
         );
     }
