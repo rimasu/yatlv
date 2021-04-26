@@ -1,4 +1,5 @@
-[![Rust](https://github.com/rimasu/yatlv/actions/workflows/rust.yml/badge.svg)](https://github.com/rimasu/yatlv/actions/workflows/rust.yml) [![Docs](https://docs.rs/yatlv/badge.svg)](https://docs.rs/yatlv)
+[![Rust](https://github.com/rimasu/yatlv/actions/workflows/rust.yml/badge.svg)](https://github.com/rimasu/yatlv/actions/workflows/rust.yml)
+[![Docs](https://docs.rs/yatlv/badge.svg)](https://docs.rs/yatlv)
 
 {{readme}}
 

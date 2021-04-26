@@ -1,14 +1,14 @@
 //! Yet Another Tag Length Value (YATLV) format.
 //!
 //! Tag-length-value formats are a common way to exchange structured data in a compact and
-//! well defined way.  They stand midway between schema rich formats (like `JSON`, `YAML` and `XML`)
+//! well defined way.  They stand midway between schema-rich formats (like `JSON`, `YAML` and `XML`)
 //! and compact binary formats that contain no schema information (like `bincode`).
 //!
 //! One advantage of tag-length-value formats is they support better forwards compatibility
-//! than their schema less cousins because they contain just enough information for a parser to
+//! than their schema-less cousins because they contain just enough information for a parser to
 //! skip fields they do not recognise.
 //!
-//! Unlike many tag-length-value formats no attempt is made to use variable length
+//! Unlike many tag-length-value formats, no attempt is made to use variable length
 //! encodings to reduce the amount of space taken by the 'length'.  This does lead to larger
 //! encodings but simplifies the job of the parser and builder significantly.
 //!
@@ -37,7 +37,7 @@
 //! The root frame can either be encoded as a `frame` or as a `packet-frame`.  Encoding
 //! as a `packet-frame` is useful when sending `frame`s across a stream.
 //!
-//! Although applications can store arbitrary data in `field-value` the follow
+//! Although applications can store arbitrary data in the `field-value`, the following
 //! conventions should normally be observed:
 //!
 //! * numbers use big-endian encoding
@@ -48,7 +48,7 @@
 //!
 //! This library tries to make reading and writing reliable and not dependant on
 //! the values being written.  To that end, the `add_*` methods for numbers always
-//! use the same number of bytes, irrespective of the actually values being written.
+//! use the same number of bytes, irrespective of the actual values being written.
 //! Currently only `add_data` and `add_str` can add a variable number of bytes to the frame.
 //!
 //! Reading attempts to be forward compatible, with the following guarantees:
@@ -61,7 +61,57 @@
 //! This means that when upgrading a program it should always be safe to increase the range
 //! of a field, but special handling is needed if the range of a field is going to decreased.
 //!
+//! ```
+//! use yatlv::Result;
+//! # fn main() -> Result<()> {
 //!
+//! use yatlv::{FrameBuilder, FrameBuilderLike, FrameParser};
+//!
+//! const TAG1: u16 = 1;
+//! const TAG2: u16 = 2;
+//! const TAG3: u16 = 3;
+//! const TAG4: u16 = 4;
+//!
+//! // the FrameBuilder will expand the buffer as needed, but it is more
+//! // efficient to allocate enough capacity up front.
+//! let mut buf = Vec::with_capacity(1000);
+//!
+//! {
+//!     let mut bld1 = FrameBuilder::new(&mut buf);
+//!     bld1.add_str(TAG1, "hello");
+//!
+//!     {
+//!         // child FrameBuilders retain a mutable reference
+//!         // to their parent - so you cannot have two child
+//!         // FrameBuilders in the same scope.
+//!         let mut bld2a = bld1.add_frame(TAG2);
+//!         bld2a.add_u32(TAG4, 78);
+//!         bld2a.add_u32(TAG4, 109);
+//!     }
+//!
+//!     {
+//!         let mut bld2b = bld1.add_frame(TAG3);
+//!         bld2b.add_str(TAG4, "goodbye");
+//!     }
+//! }
+//!
+//! let parser1 = FrameParser::new(&buf)?;
+//! assert_eq!(Some("hello"), parser1.get_str(TAG1)?);
+//!
+//! // FrameParsers only have an immutable reference to their parent,
+//! // so you can hold references to multiple child frames when parsing.
+//! let parser2a = parser1.get_frame(TAG2)?.unwrap();
+//! let parser2b = parser1.get_frame(TAG3)?.unwrap();
+//!
+//! // Here we are using iterator access to get all the values with the same tag (TAG4)
+//! let frame2a_values: Vec<_> = parser2a.get_u32s(TAG4).map(|v| v.unwrap()).collect();
+//! assert_eq!(vec![78, 109], frame2a_values);
+//!
+//! let frame2b_value = parser2b.get_str(TAG4)?;
+//! assert_eq!(Some("goodbye"), frame2b_value);
+//!
+//! # Ok(())}
+//! ```
 
 use std::convert::TryInto;
 
@@ -98,7 +148,7 @@ pub trait FrameBuilderLike {
     /// {
     ///     let mut bld = FrameBuilder::new(&mut data);
     ///     let tag = 45;
-    ///     let mut child_bld = bld.add_child(45);
+    ///     let mut child_bld = bld.add_frame(45);
     ///     let tag2 = 60;
     ///     let data = &[90, 9];
     ///     child_bld.add_data(60, data);
@@ -115,7 +165,13 @@ pub trait FrameBuilderLike {
     ///     90, 9        // child field-value
     /// ], &data[..]);
     /// ```
-    fn add_child(&mut self, tag: u16) -> PacketFrameBuilder;
+    fn add_frame(&mut self, tag: u16) -> PacketFrameBuilder;
+
+    #[deprecated]
+    /// Use [FrameBuilderLike::add_frame] instead.
+    fn add_child(&mut self, tag: u16) -> PacketFrameBuilder {
+        self.add_frame(tag)
+    }
 
     /// Add a bool flied to the frame.
     /// ```
@@ -315,7 +371,7 @@ impl<'a> FrameBuilderLike for FrameBuilder<'a> {
         self.data.extend_from_slice(value);
     }
 
-    fn add_child(&mut self, tag: u16) -> PacketFrameBuilder {
+    fn add_frame(&mut self, tag: u16) -> PacketFrameBuilder {
         self.field_count += 1;
         self.data.reserve(6);
         self.data.extend_from_slice(&tag.to_be_bytes());
@@ -380,7 +436,7 @@ impl<'a> FrameBuilderLike for PacketFrameBuilder<'a> {
         self.data.extend_from_slice(value);
     }
 
-    fn add_child(&mut self, tag: u16) -> PacketFrameBuilder {
+    fn add_frame(&mut self, tag: u16) -> PacketFrameBuilder {
         self.field_count += 1;
         self.data.reserve(6);
         self.data.extend_from_slice(&tag.to_be_bytes());
@@ -905,7 +961,7 @@ impl<'a> FrameParser<'a> {
     /// # let mut frame_data = Vec::new();
     /// # {
     /// #     let mut bld = FrameBuilder::new(&mut frame_data);
-    /// #     let mut bld2 = bld.add_child(12);
+    /// #     let mut bld2 = bld.add_frame(12);
     /// #     bld2.add_u8(13, 2);
     /// # }
     /// #
@@ -931,7 +987,7 @@ impl<'a> FrameParser<'a> {
     /// # {
     /// #     let mut bld = FrameBuilder::new(&mut frame_data);
     /// #     for _ in 0..2 {
-    /// #         let mut child = bld.add_child(12);
+    /// #         let mut child = bld.add_frame(12);
     /// #         child.add_u8(13, 2)
     /// #     }
     /// # }
@@ -1106,7 +1162,7 @@ mod tests {
         let mut data = Vec::with_capacity(100);
         {
             let mut bld = FrameBuilder::new(&mut data);
-            let mut child_bld = bld.add_child(1022);
+            let mut child_bld = bld.add_frame(1022);
             child_bld.add_data(60, &[9, 255])
         }
         assert_eq!(
@@ -1130,7 +1186,7 @@ mod tests {
         let mut data = Vec::with_capacity(100);
         {
             let mut bld = PacketFrameBuilder::new(&mut data);
-            let mut child_bld = bld.add_child(1022);
+            let mut child_bld = bld.add_frame(1022);
             child_bld.add_data(60, &[9, 255])
         }
         assert_eq!(
@@ -1729,7 +1785,7 @@ mod tests {
         {
             let mut bld = FrameBuilder::new(&mut data);
             bld.add_u8(100, 1);
-            let mut bld2 = bld.add_child(200);
+            let mut bld2 = bld.add_frame(200);
             bld2.add_u8(300, 3);
         }
 
@@ -1745,7 +1801,7 @@ mod tests {
             let mut bld = FrameBuilder::new(&mut data);
             bld.add_u8(100, 1);
             for i in 0..2 {
-                let mut bld2 = bld.add_child(200);
+                let mut bld2 = bld.add_frame(200);
                 bld2.add_u8(300, i);
             }
         }
