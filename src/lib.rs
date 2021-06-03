@@ -317,6 +317,33 @@ pub trait FrameBuilderLike {
     {
         self.add_data(tag, &value.as_ref().as_bytes())
     }
+
+
+    /// Add a uuid field to the frame.
+    ///
+    /// ```
+    /// use uuid::Uuid;
+    /// use yatlv::{FrameBuilder, FrameBuilderLike};
+    /// let mut data = Vec::with_capacity(100);
+    /// {
+    ///     let mut bld = FrameBuilder::new(&mut data);
+    ///     let tag = 45;
+    ///     let data = Uuid::parse_str("3011712a-d972-4a5d-bbf9-ec5fb7525c97").unwrap();
+    ///     bld.add_uuid(tag, &data);
+    /// }
+    /// assert_eq!(&[
+    ///     1,                      // frame-format
+    ///     0, 0, 0, 1,             // field count
+    ///     0, 45,                  // field-tag
+    ///     0, 0, 0, 16,             // field-length
+    ///     48, 17, 113, 42, 217, 114, 74, 93, 187, 249, 236, 95, 183, 82, 92, 151 // field-value
+    /// ], &data[..]);
+    /// ```
+    #[cfg(feature="uuid")]
+    fn add_uuid(&mut self, tag: u16, value: &uuid::Uuid)
+    {
+        self.add_data(tag, value.as_bytes())
+    }
 }
 
 /// FrameBuilder can be used to push a frame into a mutable `Vec<u8>`
@@ -943,6 +970,62 @@ impl<'a> FrameParser<'a> {
         self.get_datas(search_tag).map(|v| decode_str(v))
     }
 
+    ///Read uuid field from frame
+    ///
+    /// ```
+    /// # use yatlv::{FrameParser, FrameBuilder, FrameBuilderLike, Result};
+    /// # fn main() -> Result<()> {
+    /// # let mut frame_data = Vec::new();
+    /// # {
+    /// #     let mut bld = FrameBuilder::new(&mut frame_data);
+    /// #     let uuid = uuid::Uuid::parse_str("3011712a-d972-4a5d-bbf9-ec5fb7525c97").unwrap();
+    /// #     bld.add_uuid(12, &uuid);
+    /// # }
+    /// #
+    /// // Assuming frame_data contains a frame with a
+    /// // single data field (tag=12, value=3011712a-d972-4a5d-bbf9-ec5fb7525c97)
+    /// let parser = FrameParser::new(&frame_data)?;
+    /// let expected = uuid::Uuid::parse_str("3011712a-d972-4a5d-bbf9-ec5fb7525c97").unwrap();
+    /// assert_eq!(Some(expected), parser.get_uuid(12)?);
+    /// # Ok(()) }
+    ///  ```
+    #[cfg(feature="uuid")]
+    pub fn get_uuid(&self, search_tag: u16) -> Result<Option<uuid::Uuid>> {
+        self.decode_value(search_tag, decode_uuid)
+    }
+
+
+    ///Read uuid fields from frame
+    ///
+    /// ```
+    /// # use yatlv::{FrameParser, FrameBuilder, FrameBuilderLike, Result};
+    /// # fn main() -> Result<()> {
+    /// # let mut frame_data = Vec::new();
+    /// # {
+    /// #     let mut bld = FrameBuilder::new(&mut frame_data);
+    /// #     let uuid = uuid::Uuid::parse_str("3011712a-d972-4a5d-bbf9-ec5fb7525c97").unwrap();
+    /// #     bld.add_uuid(12, &uuid);
+    /// #     let uuid = uuid::Uuid::parse_str("40b4e52c-1501-48d3-98eb-e2c66cb76cbf").unwrap();
+    /// #     bld.add_uuid(12, &uuid);
+    /// # }
+    /// #
+    /// // Assuming frame_data contains a frame with a two fields
+    /// // (tag=12, value1=3011712a-d972-4a5d-bbf9-ec5fb7525c97, value2=40b4e52c-1501-48d3-98eb-e2c66cb76cbf)
+    /// let parser = FrameParser::new(&frame_data)?;
+    /// let expected = vec! [Ok(uuid::Uuid::parse_str("3011712a-d972-4a5d-bbf9-ec5fb7525c97").unwrap()),
+    ///                      Ok(uuid::Uuid::parse_str("40b4e52c-1501-48d3-98eb-e2c66cb76cbf").unwrap())];
+    /// let actual: Vec<Result<uuid::Uuid>> = parser.get_uuids(12).collect();
+    /// assert_eq!(expected, actual);
+    /// # Ok(()) }
+    ///  ```
+    #[cfg(feature="uuid")]
+    pub fn get_uuids<'b>(&'b self, search_tag: u16) -> impl Iterator<Item = Result<uuid::Uuid>> + 'b
+    where
+        'b: 'a,
+    {
+        self.get_datas(search_tag).map(|v| decode_uuid(v))
+    }
+
     /// Attempt to find field-value of field that has the search_tag and then
     /// attempts to convert it to the required type using the supplied `decoder` function.
     fn decode_ref<T, F>(&self, search_tag: u16, decoder: F) -> Result<Option<&T>>
@@ -952,6 +1035,7 @@ impl<'a> FrameParser<'a> {
     {
         self.get_data(search_tag).map(|v| decoder(v)).transpose()
     }
+
 
     /// Read a child frame from a frame.
     ///
@@ -1095,6 +1179,12 @@ fn decode_bool(value: &[u8]) -> Result<bool> {
 fn decode_str(value: &[u8]) -> Result<&str> {
     std::str::from_utf8(value).map_err(|_| Error::IncompatibleFieldValue)
 }
+
+#[cfg(feature="uuid")]
+fn decode_uuid(value: &[u8]) -> Result<uuid::Uuid> {
+    uuid::Uuid::from_slice(value).map_err(|_| Error::IncompatibleFieldLength(value.len()))
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -1778,6 +1868,43 @@ mod tests {
         let actual: Vec<Result<&str>> = frame.get_strs(1).collect();
         assert_eq!(expected, actual);
     }
+
+
+    #[test]
+    #[cfg(feature="uuid")]
+    fn can_read_uuid_from_a_frame() {
+        let test_uuid = uuid::Uuid::parse_str("40b4e52c-1501-48d3-98eb-e2c66cb76cbf").unwrap();
+        let mut data = Vec::new();
+
+        {
+            let mut bld = FrameBuilder::new(&mut data);
+            bld.add_uuid(100, &test_uuid);
+        }
+
+        let frame = FrameParser::new(&data).unwrap();
+        assert_eq!(Some(test_uuid), frame.get_uuid(100).unwrap());
+    }
+
+    #[test]
+    #[cfg(feature="uuid")]
+    fn can_read_uuids_from_a_frame() {
+        let test_uuid1 = uuid::Uuid::parse_str("40b4e52c-1501-48d3-98eb-e2c66cb76cbf").unwrap();
+        let test_uuid2 = uuid::Uuid::parse_str("e6bb35e5-547b-4930-b72c-5d50aa60ff49").unwrap();
+        let test_uuid3 = uuid::Uuid::parse_str("451f82e5-c17a-4843-a9c7-5ff3f7ae20fd").unwrap();
+
+        let mut data = Vec::new();
+        {
+            let mut bld = FrameBuilder::new(&mut data);
+            bld.add_uuid(1, &test_uuid1);
+            bld.add_uuid(2, &test_uuid2); // will be ignored
+            bld.add_uuid(1, &test_uuid3);
+        }
+        let frame = FrameParser::new(&data).unwrap();
+        let expected: Vec<Result<uuid::Uuid>> = vec![Ok(test_uuid1), Ok(test_uuid3)];
+        let actual: Vec<Result<uuid::Uuid>> = frame.get_uuids(1).collect();
+        assert_eq!(expected, actual);
+    }
+
 
     #[test]
     fn can_read_child_frame() {

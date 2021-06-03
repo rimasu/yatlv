@@ -10,3 +10,7 @@ documentation = "https://docs.rs/yatlv/"
 homepage = "https://github.com/rimasu/yatlv"
 
 [dependencies]
+uuid = { version = "0.8.2", optional = true }
+
+[features]
+default = ["uuid"]
