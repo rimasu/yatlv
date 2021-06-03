@@ -318,7 +318,6 @@ pub trait FrameBuilderLike {
         self.add_data(tag, &value.as_ref().as_bytes())
     }
 
-
     /// Add a uuid field to the frame.
     ///
     /// ```
@@ -339,9 +338,8 @@ pub trait FrameBuilderLike {
     ///     48, 17, 113, 42, 217, 114, 74, 93, 187, 249, 236, 95, 183, 82, 92, 151 // field-value
     /// ], &data[..]);
     /// ```
-    #[cfg(feature="uuid")]
-    fn add_uuid(&mut self, tag: u16, value: &uuid::Uuid)
-    {
+    #[cfg(feature = "uuid")]
+    fn add_uuid(&mut self, tag: u16, value: &uuid::Uuid) {
         self.add_data(tag, value.as_bytes())
     }
 }
@@ -989,11 +987,10 @@ impl<'a> FrameParser<'a> {
     /// assert_eq!(Some(expected), parser.get_uuid(12)?);
     /// # Ok(()) }
     ///  ```
-    #[cfg(feature="uuid")]
+    #[cfg(feature = "uuid")]
     pub fn get_uuid(&self, search_tag: u16) -> Result<Option<uuid::Uuid>> {
         self.decode_value(search_tag, decode_uuid)
     }
-
 
     ///Read uuid fields from frame
     ///
@@ -1018,7 +1015,7 @@ impl<'a> FrameParser<'a> {
     /// assert_eq!(expected, actual);
     /// # Ok(()) }
     ///  ```
-    #[cfg(feature="uuid")]
+    #[cfg(feature = "uuid")]
     pub fn get_uuids<'b>(&'b self, search_tag: u16) -> impl Iterator<Item = Result<uuid::Uuid>> + 'b
     where
         'b: 'a,
@@ -1035,7 +1032,6 @@ impl<'a> FrameParser<'a> {
     {
         self.get_data(search_tag).map(|v| decoder(v)).transpose()
     }
-
 
     /// Read a child frame from a frame.
     ///
@@ -1180,11 +1176,10 @@ fn decode_str(value: &[u8]) -> Result<&str> {
     std::str::from_utf8(value).map_err(|_| Error::IncompatibleFieldValue)
 }
 
-#[cfg(feature="uuid")]
+#[cfg(feature = "uuid")]
 fn decode_uuid(value: &[u8]) -> Result<uuid::Uuid> {
     uuid::Uuid::from_slice(value).map_err(|_| Error::IncompatibleFieldLength(value.len()))
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -1869,9 +1864,8 @@ mod tests {
         assert_eq!(expected, actual);
     }
 
-
     #[test]
-    #[cfg(feature="uuid")]
+    #[cfg(feature = "uuid")]
     fn can_read_uuid_from_a_frame() {
         let test_uuid = uuid::Uuid::parse_str("40b4e52c-1501-48d3-98eb-e2c66cb76cbf").unwrap();
         let mut data = Vec::new();
@@ -1886,7 +1880,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature="uuid")]
+    #[cfg(feature = "uuid")]
     fn can_read_uuids_from_a_frame() {
         let test_uuid1 = uuid::Uuid::parse_str("40b4e52c-1501-48d3-98eb-e2c66cb76cbf").unwrap();
         let test_uuid2 = uuid::Uuid::parse_str("e6bb35e5-547b-4930-b72c-5d50aa60ff49").unwrap();
@@ -1904,7 +1898,6 @@ mod tests {
         let actual: Vec<Result<uuid::Uuid>> = frame.get_uuids(1).collect();
         assert_eq!(expected, actual);
     }
-
 
     #[test]
     fn can_read_child_frame() {
@@ -1934,9 +1927,7 @@ mod tests {
         }
 
         let frame = FrameParser::new(&data).unwrap();
-        let child_frame: Vec<FrameParser> = frame.get_frames(200)
-            .map(|v| v.unwrap())
-            .collect();
+        let child_frame: Vec<FrameParser> = frame.get_frames(200).map(|v| v.unwrap()).collect();
 
         assert_eq!(Some(0), child_frame[0].get_u8(300).unwrap());
         assert_eq!(Some(1), child_frame[1].get_u8(300).unwrap());
