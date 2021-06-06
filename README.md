@@ -64,6 +64,14 @@ is small enough.
 This means that when upgrading a program it should always be safe to increase the range
 of a field, but special handling is needed if the range of a field is going to decreased.
 
+## Create Features
+
+Yatlv has one optional feature:
+
+* `uuid` supports reading and writing uuids.
+
+## Example Usage
+
 ```rust
 use yatlv::Result;
 
