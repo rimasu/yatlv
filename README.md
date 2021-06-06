@@ -122,7 +122,7 @@ assert_eq!(Some("goodbye"), frame2b_value);
 
 ```
 
-Current version: 1.1.0
+Current version: 1.2.0
 
 This is a hobby project; I don't have the bandwidth
 to properly maintain this.  You are welcome to use
