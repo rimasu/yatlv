@@ -58,11 +58,12 @@ Reading attempts to be forward compatible, with the following guarantees:
 
 * Any number written by a smaller `add_u*` method can always be be safely read by a larger one.
 (e.g., a number written using `add_u16` can be safely read using`get_u32`).
-* Any number written by a larger `add_u*` method can be read by a smaller one _if_ the value
-is small enough.
+* Any number written by a larger `add_u*` method can not be read by a smaller one.
 
 This means that when upgrading a program it should always be safe to increase the range
-of a field, but special handling is needed if the range of a field is going to decreased.
+of a field.  If you want to decrease the range of a number field, the upgraded version
+will need to read using the same `get_u*` function and then handle any overflow in
+program logic.
 
 ## Create Features
 
@@ -122,7 +123,7 @@ assert_eq!(Some("goodbye"), frame2b_value);
 
 ```
 
-Current version: 1.2.0
+Current version: 1.3.0
 
 This is a hobby project; I don't have the bandwidth
 to properly maintain this.  You are welcome to use
