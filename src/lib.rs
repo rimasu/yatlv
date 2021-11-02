@@ -324,7 +324,7 @@ pub trait FrameBuilderLike {
     where
         S: AsRef<str>,
     {
-        self.add_data(tag, &value.as_ref().as_bytes())
+        self.add_data(tag, value.as_ref().as_bytes())
     }
 
     /// Add a uuid field to the frame.
@@ -710,7 +710,7 @@ impl<'a> FrameParser<'a> {
     where
         'b: 'a,
     {
-        self.get_datas(search_tag).map(|v| decode_u8(v))
+        self.get_datas(search_tag).map(decode_u8)
     }
 
     /// Read u16 field from frame
@@ -763,7 +763,7 @@ impl<'a> FrameParser<'a> {
     where
         'b: 'a,
     {
-        self.get_datas(search_tag).map(|v| decode_u16(v))
+        self.get_datas(search_tag).map(decode_u16)
     }
 
     /// Read u32 field from frame
@@ -817,7 +817,7 @@ impl<'a> FrameParser<'a> {
     where
         'b: 'a,
     {
-        self.get_datas(search_tag).map(|v| decode_u32(v))
+        self.get_datas(search_tag).map(decode_u32)
     }
 
     /// Read u64 field from frame
@@ -869,7 +869,7 @@ impl<'a> FrameParser<'a> {
     where
         'b: 'a,
     {
-        self.get_datas(search_tag).map(|v| decode_u64(v))
+        self.get_datas(search_tag).map(decode_u64)
     }
 
     /// Read bool field from frame
@@ -917,7 +917,7 @@ impl<'a> FrameParser<'a> {
     where
         'b: 'a,
     {
-        self.get_datas(search_tag).map(|v| decode_bool(v))
+        self.get_datas(search_tag).map(decode_bool)
     }
 
     /// Attempt to find field-value of field that has the search_tag and then
@@ -926,7 +926,7 @@ impl<'a> FrameParser<'a> {
     where
         F: FnOnce(&[u8]) -> Result<T>,
     {
-        self.get_data(search_tag).map(|v| decoder(v)).transpose()
+        self.get_data(search_tag).map(decoder).transpose()
     }
 
     /// Read str field from frame
@@ -974,7 +974,7 @@ impl<'a> FrameParser<'a> {
     where
         'b: 'a,
     {
-        self.get_datas(search_tag).map(|v| decode_str(v))
+        self.get_datas(search_tag).map(decode_str)
     }
 
     ///Read uuid field from frame
@@ -1029,7 +1029,7 @@ impl<'a> FrameParser<'a> {
     where
         'b: 'a,
     {
-        self.get_datas(search_tag).map(|v| decode_uuid(v))
+        self.get_datas(search_tag).map(decode_uuid)
     }
 
     /// Attempt to find field-value of field that has the search_tag and then
@@ -1039,7 +1039,7 @@ impl<'a> FrameParser<'a> {
         F: FnOnce(&[u8]) -> Result<&T>,
         T: ?Sized,
     {
-        self.get_data(search_tag).map(|v| decoder(v)).transpose()
+        self.get_data(search_tag).map(decoder).transpose()
     }
 
     /// Read a child frame from a frame.
@@ -1063,9 +1063,7 @@ impl<'a> FrameParser<'a> {
     /// # Ok(()) }
     ///  ```
     pub fn get_frame(&self, search_tag: u16) -> Result<Option<FrameParser>> {
-        self.get_data(search_tag)
-            .map(|v| FrameParser::new(v))
-            .transpose()
+        self.get_data(search_tag).map(FrameParser::new).transpose()
     }
 
     /// Read child frames from a frame.
@@ -1098,7 +1096,7 @@ impl<'a> FrameParser<'a> {
     where
         'b: 'a,
     {
-        self.get_datas(search_tag).map(|v| FrameParser::new(v))
+        self.get_datas(search_tag).map(FrameParser::new)
     }
 }
 
