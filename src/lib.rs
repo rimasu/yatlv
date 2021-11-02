@@ -55,11 +55,12 @@
 //!
 //! * Any number written by a smaller `add_u*` method can always be be safely read by a larger one.
 //! (e.g., a number written using `add_u16` can be safely read using`get_u32`).
-//! * Any number written by a larger `add_u*` method can be read by a smaller one _if_ the value
-//! is small enough.
+//! * Any number written by a larger `add_u*` method can not be read by a smaller one.
 //!
 //! This means that when upgrading a program it should always be safe to increase the range
-//! of a field, but special handling is needed if the range of a field is going to decreased.
+//! of a field.  If you want to decrease the range of a number field, the upgraded version
+//! will need to read using the same `get_u*` function and then handle any overflow in
+//! program logic.
 //!
 //! # Create Features
 //!
@@ -1105,18 +1106,6 @@ fn decode_u8(value: &[u8]) -> Result<u8> {
     match value.len() {
         1 => Ok(value[0]),
 
-        2 => u16::from_be_bytes(value.try_into().unwrap())
-            .try_into()
-            .map_err(|_| Error::IncompatibleFieldValue),
-
-        4 => u32::from_be_bytes(value.try_into().unwrap())
-            .try_into()
-            .map_err(|_| Error::IncompatibleFieldValue),
-
-        8 => u64::from_be_bytes(value.try_into().unwrap())
-            .try_into()
-            .map_err(|_| Error::IncompatibleFieldValue),
-
         _ => Err(Error::IncompatibleFieldLength(value.len())),
     }
 }
@@ -1126,14 +1115,6 @@ fn decode_u16(value: &[u8]) -> Result<u16> {
         1 => Ok(value[0] as u16),
 
         2 => Ok(u16::from_be_bytes(value.try_into().unwrap())),
-
-        4 => u32::from_be_bytes(value.try_into().unwrap())
-            .try_into()
-            .map_err(|_| Error::IncompatibleFieldValue),
-
-        8 => u64::from_be_bytes(value.try_into().unwrap())
-            .try_into()
-            .map_err(|_| Error::IncompatibleFieldValue),
 
         _ => Err(Error::IncompatibleFieldLength(value.len())),
     }
@@ -1146,10 +1127,6 @@ fn decode_u32(value: &[u8]) -> Result<u32> {
         2 => Ok(u16::from_be_bytes(value.try_into().unwrap()) as u32),
 
         4 => Ok(u32::from_be_bytes(value.try_into().unwrap())),
-
-        8 => u64::from_be_bytes(value.try_into().unwrap())
-            .try_into()
-            .map_err(|_| Error::IncompatibleFieldValue),
 
         _ => Err(Error::IncompatibleFieldLength(value.len())),
     }
@@ -1544,23 +1521,37 @@ mod tests {
     #[test]
     fn can_decode_compatible_values_into_u8() {
         assert_eq!(Ok(8), decode_u8(&[8]));
-        assert_eq!(Ok(8), decode_u8(&[0, 8]));
-        assert_eq!(Ok(8), decode_u8(&[0, 0, 0, 8]));
-        assert_eq!(Ok(8), decode_u8(&[0, 0, 0, 0, 0, 0, 0, 8]));
     }
 
     #[test]
     fn can_not_decode_incompatible_values_into_u8() {
         assert_eq!(
-            Some(Error::IncompatibleFieldValue),
+            Some(Error::IncompatibleFieldLength(2)),
+            decode_u8(&[0, 8]).err()
+        );
+
+        assert_eq!(
+            Some(Error::IncompatibleFieldLength(4)),
+            decode_u8(&[0, 0, 0, 8]).err()
+        );
+
+        assert_eq!(
+            Some(Error::IncompatibleFieldLength(8)),
+            decode_u8(&[0, 0, 0, 0, 0, 0, 0, 8]).err()
+        );
+
+        assert_eq!(
+            Some(Error::IncompatibleFieldLength(2)),
             decode_u8(&[1, 8]).err()
         );
+
         assert_eq!(
-            Some(Error::IncompatibleFieldValue),
+            Some(Error::IncompatibleFieldLength(4)),
             decode_u8(&[0, 0, 1, 8]).err()
         );
+
         assert_eq!(
-            Some(Error::IncompatibleFieldValue),
+            Some(Error::IncompatibleFieldLength(8)),
             decode_u8(&[0, 0, 0, 0, 0, 0, 1, 8]).err()
         );
     }
@@ -1571,16 +1562,10 @@ mod tests {
         {
             let mut bld = FrameBuilder::new(&mut data);
             bld.add_u8(100, 250);
-            bld.add_u16(200, 251);
-            bld.add_u32(300, 252);
-            bld.add_u64(400, 253);
         }
 
         let frame = FrameParser::new(&data).unwrap();
         assert_eq!(Some(250), frame.get_u8(100).unwrap());
-        assert_eq!(Some(251), frame.get_u8(200).unwrap());
-        assert_eq!(Some(252), frame.get_u8(300).unwrap());
-        assert_eq!(Some(253), frame.get_u8(400).unwrap());
     }
 
     #[test]
@@ -1616,19 +1601,23 @@ mod tests {
     fn can_decode_compatible_values_into_u16() {
         assert_eq!(Ok(8), decode_u16(&[8]));
         assert_eq!(Ok(3080), decode_u16(&[12, 8]));
-        assert_eq!(Ok(3080), decode_u16(&[0, 0, 12, 8]));
-        assert_eq!(Ok(3080), decode_u16(&[0, 0, 0, 0, 0, 0, 12, 8]));
     }
 
     #[test]
     fn can_not_decode_incompatible_values_into_u16() {
         assert_eq!(
-            Some(Error::IncompatibleFieldValue),
+            Some(Error::IncompatibleFieldLength(4)),
+            decode_u16(&[0, 0, 12, 8]).err()
+        );
+
+        assert_eq!(
+            Some(Error::IncompatibleFieldLength(4)),
             decode_u16(&[0, 1, 255, 255]).err()
         );
+
         assert_eq!(
-            Some(Error::IncompatibleFieldValue),
-            decode_u16(&[0, 0, 0, 0, 0, 1, 255, 255]).err()
+            Some(Error::IncompatibleFieldLength(8)),
+            decode_u16(&[0, 0, 0, 0, 0, 0, 0, 1]).err()
         );
     }
 
@@ -1639,15 +1628,11 @@ mod tests {
             let mut bld = FrameBuilder::new(&mut data);
             bld.add_u8(100, 90);
             bld.add_u16(200, 1025);
-            bld.add_u32(300, 1026);
-            bld.add_u64(400, 1027);
         }
 
         let frame = FrameParser::new(&data).unwrap();
         assert_eq!(Some(90), frame.get_u16(100).unwrap());
         assert_eq!(Some(1025), frame.get_u16(200).unwrap());
-        assert_eq!(Some(1026), frame.get_u16(300).unwrap());
-        assert_eq!(Some(1027), frame.get_u16(400).unwrap());
     }
 
     #[test]
@@ -1684,13 +1669,16 @@ mod tests {
         assert_eq!(Ok(8), decode_u32(&[8]));
         assert_eq!(Ok(3080), decode_u32(&[12, 8]));
         assert_eq!(Ok(1744964616), decode_u32(&[104, 2, 12, 8]));
-        assert_eq!(Ok(1744964616), decode_u32(&[0, 0, 0, 0, 104, 2, 12, 8]));
     }
 
     #[test]
     fn can_not_decode_incompatible_values_into_u32() {
         assert_eq!(
-            Some(Error::IncompatibleFieldValue),
+            Some(Error::IncompatibleFieldLength(8)),
+            decode_u32(&[0, 0, 0, 0, 104, 2, 12, 8]).err()
+        );
+        assert_eq!(
+            Some(Error::IncompatibleFieldLength(8)),
             decode_u32(&[0, 0, 0, 1, 255, 255, 255, 255]).err()
         );
     }
@@ -1703,14 +1691,12 @@ mod tests {
             bld.add_u8(100, 90);
             bld.add_u16(200, 1025);
             bld.add_u32(300, 1744964616);
-            bld.add_u64(400, 1744964617);
         }
 
         let frame = FrameParser::new(&data).unwrap();
         assert_eq!(Some(90), frame.get_u32(100).unwrap());
         assert_eq!(Some(1025), frame.get_u32(200).unwrap());
         assert_eq!(Some(1744964616), frame.get_u32(300).unwrap());
-        assert_eq!(Some(1744964617), frame.get_u32(400).unwrap());
     }
 
     #[test]
